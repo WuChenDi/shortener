@@ -1,13 +1,12 @@
-import { Hono } from 'hono'
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi'
 import { links } from '@/database/schema'
 import { eq } from 'drizzle-orm'
 import { sha256 } from '@noble/hashes/sha2'
 import { bytesToHex } from '@noble/hashes/utils'
-import type { CloudflareEnv, Variables, ServiceHealthResponse } from '@/types'
-import { useDrizzle } from '@/lib/db'
-import { withNotDeleted } from '@/lib/db-utils'
+import type { CloudflareEnv, Variables } from '@/types'
+import { useDrizzle, withNotDeleted } from '@/lib'
 
-export const shortCodeRoutes = new Hono<{
+export const shortCodeRoutes = new OpenAPIHono<{
   Bindings: CloudflareEnv
   Variables: Variables
 }>()
@@ -46,8 +45,59 @@ function generateOgPageHtml(targetUrl: string): string {
 </html>`
 }
 
-// GET / - Service health check and info
-shortCodeRoutes.get('/', async (c) => {
+// OpenAPI schemas
+const ServiceHealthResponseSchema = z.object({
+  service: z.string().openapi({ 
+    description: 'Service name',
+    example: '@cdlab/shortener'
+  }),
+  status: z.enum(['healthy', 'unhealthy']).openapi({ 
+    description: 'Service status' 
+  }),
+  timestamp: z.string().openapi({ 
+    description: 'Response timestamp',
+    example: '2024-01-01T00:00:00.000Z'
+  }),
+  version: z.string().openapi({ 
+    description: 'Service version',
+    example: '1.0.0'
+  }),
+  database: z.enum(['connected', 'disconnected']).optional().openapi({ 
+    description: 'Database connection status' 
+  }),
+  error: z.string().optional().openapi({ 
+    description: 'Error message if unhealthy' 
+  }),
+})
+
+// GET / - Service health check route
+const healthCheckRoute = createRoute({
+  method: 'get',
+  path: '/',
+  tags: ['Health'],
+  summary: 'Service health check',
+  description: 'Check the health status of the URL shortener service',
+  responses: {
+    200: {
+      content: {
+        'application/json': {
+          schema: ServiceHealthResponseSchema,
+        },
+      },
+      description: 'Service is healthy',
+    },
+    500: {
+      content: {
+        'application/json': {
+          schema: ServiceHealthResponseSchema,
+        },
+      },
+      description: 'Service is unhealthy',
+    },
+  },
+})
+
+shortCodeRoutes.openapi(healthCheckRoute, async (c) => {
   logger.info('Service health check requested')
 
   try {
@@ -64,11 +114,12 @@ shortCodeRoutes.get('/', async (c) => {
       logger.warn('Database connectivity test failed', dbError)
     }
 
-    const serviceInfo: ServiceHealthResponse = {
+    const serviceInfo = {
       service: '@cdlab/shortener',
-      status: 'healthy',
+      status: 'healthy' as const,
       timestamp: new Date().toISOString(),
-      version: '1.0.0'
+      version: '1.0.0',
+      database: dbStatus,
     }
 
     logger.info('Service health check completed', {
@@ -80,9 +131,9 @@ shortCodeRoutes.get('/', async (c) => {
   } catch (error) {
     logger.error('Error during health check', error)
 
-    const errorResponse: ServiceHealthResponse = {
+    const errorResponse = {
       service: '@cdlab/shortener',
-      status: 'unhealthy',
+      status: 'unhealthy' as const,
       timestamp: new Date().toISOString(),
       version: '1.0.0',
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -92,13 +143,76 @@ shortCodeRoutes.get('/', async (c) => {
   }
 })
 
-// GET /:shortCode
-shortCodeRoutes.get('/:shortCode', async (c) => {
-  const shortCode = c.req.param('shortCode')
+// GET /:shortCode - Redirect route
+const redirectRoute = createRoute({
+  method: 'get',
+  path: '/{shortCode}',
+  tags: ['Shortcode'],
+  summary: 'Redirect short code',
+  description: 'Redirect a short code to its original URL. Social media crawlers are redirected to OG page.',
+  request: {
+    params: z.object({
+      shortCode: z.string().openapi({
+        description: 'The short code to redirect',
+        example: 'abc123',
+      }),
+    }),
+  },
+  responses: {
+    302: {
+      description: 'Redirect to original URL',
+      headers: z.object({
+        Location: z.string().openapi({
+          description: 'The original URL to redirect to',
+        }),
+      }),
+    },
+    404: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            code: z.number(),
+            message: z.string(),
+          }),
+        },
+      },
+      description: 'Short code not found or expired',
+    },
+    500: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            code: z.number(),
+            message: z.string(),
+          }),
+        },
+      },
+      description: 'Internal server error',
+    },
+  },
+})
+
+shortCodeRoutes.openapi(redirectRoute, async (c) => {
+  const { shortCode } = c.req.valid('param')
   const userAgent = c.req.header('user-agent') || ''
 
   logger.info(`Processing shortcode redirect request: ${shortCode}`)
   logger.debug(`User agent: ${userAgent}`)
+
+  // Skip common browser requests that are not shortcodes
+  if (shortCode === 'favicon.ico' ||
+      shortCode === 'robots.txt' ||
+      shortCode === 'sitemap.xml' ||
+      shortCode.includes('.')) {
+    logger.debug(`Skipping non-shortcode request: ${shortCode}`)
+    return c.json(
+      {
+        code: 404,
+        message: 'Not Found',
+      },
+      404
+    )
+  }
 
   try {
     const db = useDrizzle(c)
@@ -110,7 +224,7 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
     // Check for social media crawlers
     if (userAgent.includes('facebookexternalhit') || userAgent.includes('twitterbot')) {
       logger.info(`Social media crawler detected, redirecting to OG page: ${shortCode}`)
-      return c.redirect(`/u/${shortCode}/og`, 302)
+      return c.redirect(`/${shortCode}/og`, 302)
     }
 
     const hash = bytesToHex(sha256(`${domain}:${shortCode}`))
@@ -175,11 +289,87 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
   }
 })
 
-// GET /:shortCode/og
-shortCodeRoutes.get('/:shortCode/og', async (c) => {
-  const shortCode = c.req.param('shortCode')
+// GET /:shortCode/og - Open Graph page route
+const ogPageRoute = createRoute({
+  method: 'get',
+  path: '/{shortCode}/og',
+  tags: ['Shortcode'],
+  summary: 'Open Graph page',
+  description: 'Generate an Open Graph page for social media sharing that redirects to the original URL',
+  request: {
+    params: z.object({
+      shortCode: z.string().openapi({
+        description: 'The short code for OG page',
+        example: 'abc123',
+      }),
+    }),
+  },
+  responses: {
+    200: {
+      content: {
+        'text/html': {
+          schema: z.string().openapi({
+            description: 'HTML page with Open Graph meta tags',
+          }),
+        },
+      },
+      description: 'Open Graph HTML page',
+    },
+    400: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            code: z.number(),
+            message: z.string(),
+          }),
+        },
+      },
+      description: 'Invalid short code',
+    },
+    404: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            code: z.number(),
+            message: z.string(),
+          }),
+        },
+      },
+      description: 'Short code not found or expired',
+    },
+    500: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            code: z.number(),
+            message: z.string(),
+          }),
+        },
+      },
+      description: 'Internal server error',
+    },
+  },
+})
+
+shortCodeRoutes.openapi(ogPageRoute, async (c) => {
+  const { shortCode } = c.req.valid('param')
 
   logger.info(`Processing OG page request for shortcode: ${shortCode}`)
+
+  // Skip common browser requests that are not shortcodes
+  if (shortCode === 'favicon.ico' || 
+      shortCode === 'robots.txt' || 
+      shortCode === 'sitemap.xml' ||
+      shortCode.includes('.')) {
+    logger.debug(`Skipping non-shortcode OG request: ${shortCode}`)
+    return c.json(
+      {
+        code: 404,
+        message: 'Not Found',
+      },
+      404
+    )
+  }
 
   try {
     if (!shortCode || shortCode.trim() === '') {

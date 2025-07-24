@@ -1,36 +1,96 @@
-import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi'
 import { links } from '@/database/schema'
 import { eq } from 'drizzle-orm'
 import { sha256 } from '@noble/hashes/sha2'
 import { bytesToHex } from '@noble/hashes/utils'
-import type {
-  ApiResponse,
-  BatchOperationResponse,
-  CloudflareEnv,
-  Variables,
-} from '@/types'
-import { useDrizzle } from '@/lib/db'
-import { notDeleted, withNotDeleted, softDelete } from '@/lib/db-utils'
+import type { CloudflareEnv, Variables} from '@/types'
+import { useDrizzle, notDeleted, withNotDeleted, softDelete } from '@/lib'
 import { generateRandomHash, getDefaultExpiresAt } from '@/utils'
 import {
-  isDeletedQuerySchema,
   createUrlRequestSchema,
   updateUrlRequestSchema,
   deleteUrlRequestSchema,
 } from '@/utils/url.validator'
 
-export const apiRoutes = new Hono<{ Bindings: CloudflareEnv; Variables: Variables }>()
+export const apiRoutes = new OpenAPIHono<{
+  Bindings: CloudflareEnv
+  Variables: Variables
+}>()
 
-// POST /api/page
-apiRoutes.post('/page', async (c) => {
+const isDeletedQuerySchema = z.object({
+  isDeleted: z.string().optional().openapi({
+    description: 'Filter by deletion status (0 = active, 1 = deleted)',
+    example: '0',
+  }),
+})
+
+// OpenAPI schemas
+const ApiResponseSchema = z.object({
+  code: z.number().openapi({ description: 'Response code (0 for success)' }),
+  message: z.string().openapi({ description: 'Response message' }),
+  data: z.any().optional().openapi({ description: 'Response data' }),
+})
+
+const LinkSchema = z.object({
+  id: z.number().openapi({ description: 'Link ID' }),
+  url: z.url().openapi({ description: 'Original URL' }),
+  userId: z.string().openapi({ description: 'User ID who created the link' }),
+  expiresAt: z.number().nullable().openapi({ description: 'Expiration timestamp' }),
+  hash: z.string().openapi({ description: 'Unique hash for the short code' }),
+  attribute: z.any().nullable().openapi({ description: 'Additional attributes' }),
+  createdAt: z.string().openapi({ description: 'Creation timestamp' }),
+  updatedAt: z.string().openapi({ description: 'Last update timestamp' }),
+  isDeleted: z.number().openapi({ description: 'Soft delete flag (0 = active, 1 = deleted)' }),
+})
+
+const BatchOperationResponseSchema = z.object({
+  successes: z.array(z.object({
+    hash: z.string(),
+    success: z.boolean(),
+    shortUrl: z.string().optional(),
+    url: z.string().optional(),
+    expiresAt: z.number().optional(),
+  })).openapi({ description: 'Successful operations' }),
+  failures: z.array(z.object({
+    hash: z.string(),
+    success: z.boolean(),
+    error: z.string().optional(),
+  })).openapi({ description: 'Failed operations' }),
+})
+
+const ErrorResponseSchema = z.object({
+  code: z.number().openapi({ description: 'Error code' }),
+  message: z.string().openapi({ description: 'Error message' }),
+  data: z.any().nullable().openapi({ description: 'Error data' }),
+})
+
+// POST /api/page route
+const createPageRoute = createRoute({
+  method: 'post',
+  path: '/page',
+  tags: ['Links'],
+  summary: 'Create a page',
+  description: 'Create a new page (placeholder endpoint). Requires JWT authentication.',
+  responses: {
+    200: {
+      content: {
+        'application/json': {
+          schema: ApiResponseSchema,
+        },
+      },
+      description: 'Page creation response',
+    },
+  },
+})
+
+apiRoutes.openapi(createPageRoute, async (c) => {
   logger.info('POST /api/page - Creating page')
 
   try {
     const db = useDrizzle(c)
     logger.debug('Database connection established for page creation')
 
-    return c.json<ApiResponse>({
+    return c.json({
       code: 0,
       message: 'ok',
       data: {
@@ -43,8 +103,41 @@ apiRoutes.post('/page', async (c) => {
   }
 })
 
-// GET /api/url
-apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
+// GET /api/url route
+const getUrlsRoute = createRoute({
+  method: 'get',
+  path: '/url',
+  tags: ['Links'],
+  summary: 'Get URLs',
+  description: 'Retrieve URLs with optional filtering by deletion status. Requires JWT authentication.',
+  request: {
+    query: isDeletedQuerySchema,
+  },
+  responses: {
+    200: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            code: z.number(),
+            message: z.string(),
+            data: z.array(LinkSchema),
+          }),
+        },
+      },
+      description: 'List of URLs',
+    },
+    500: {
+      content: {
+        'application/json': {
+          schema: ErrorResponseSchema,
+        },
+      },
+      description: 'Internal server error',
+    },
+  },
+})
+
+apiRoutes.openapi(getUrlsRoute, async (c) => {
   const { isDeleted } = c.req.valid('query')
   logger.info(`GET /api/url - Fetching URLs with isDeleted filter: ${isDeleted}`)
 
@@ -69,7 +162,7 @@ apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
     logger.info(`Retrieved ${allLinks?.length || 0} links from database`)
     logger.debug('Retrieved links data:', allLinks)
 
-    return c.json<ApiResponse>({
+    return c.json({
       code: 0,
       message: 'ok',
       data: allLinks || [],
@@ -89,8 +182,47 @@ apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
   }
 })
 
-// POST /api/url
-apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => {
+// POST /api/url route
+const createUrlsRoute = createRoute({
+  method: 'post',
+  path: '/url',
+  tags: ['Links'],
+  summary: 'Create URLs',
+  description: 'Create new shortened URLs. Requires JWT authentication.',
+  request: {
+    body: {
+      content: {
+        'application/json': {
+          schema: createUrlRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            code: z.number(),
+            message: z.string(),
+            data: BatchOperationResponseSchema,
+          }),
+        },
+      },
+      description: 'URLs creation result',
+    },
+    500: {
+      content: {
+        'application/json': {
+          schema: ErrorResponseSchema,
+        },
+      },
+      description: 'Internal server error',
+    },
+  },
+})
+
+apiRoutes.openapi(createUrlsRoute, async (c) => {
   logger.info('POST /api/url - Creating new URLs')
 
   try {
@@ -190,7 +322,7 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
 
     logger.info(`URL creation completed - Successes: ${successes.length}, Failures: ${failures.length}`)
 
-    return c.json<ApiResponse<BatchOperationResponse>>({
+    return c.json({
       code: 0,
       message: 'ok',
       data: {
@@ -213,8 +345,47 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
   }
 })
 
-// PUT /api/url
-apiRoutes.put('/url', zValidator('json', updateUrlRequestSchema), async (c) => {
+// PUT /api/url route
+const updateUrlsRoute = createRoute({
+  method: 'put',
+  path: '/url',
+  tags: ['Links'],
+  summary: 'Update URLs',
+  description: 'Update existing shortened URLs. Requires JWT authentication.',
+  request: {
+    body: {
+      content: {
+        'application/json': {
+          schema: updateUrlRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            code: z.number(),
+            message: z.string(),
+            data: BatchOperationResponseSchema,
+          }),
+        },
+      },
+      description: 'URLs update result',
+    },
+    500: {
+      content: {
+        'application/json': {
+          schema: ErrorResponseSchema,
+        },
+      },
+      description: 'Internal server error',
+    },
+  },
+})
+
+apiRoutes.openapi(updateUrlsRoute, async (c) => {
   logger.info('PUT /api/url - Updating URLs')
 
   try {
@@ -296,7 +467,7 @@ apiRoutes.put('/url', zValidator('json', updateUrlRequestSchema), async (c) => {
       logger.warn(`Some URL updates failed: ${failures.map((f) => ({ hash: f.hash, error: f.error }))}`)
     }
 
-    return c.json<ApiResponse<BatchOperationResponse>>({
+    return c.json({
       code: 0,
       message: 'ok',
       data: {
@@ -319,8 +490,47 @@ apiRoutes.put('/url', zValidator('json', updateUrlRequestSchema), async (c) => {
   }
 })
 
-// DELETE /api/url
-apiRoutes.delete('/url', zValidator('json', deleteUrlRequestSchema), async (c) => {
+// DELETE /api/url route
+const deleteUrlsRoute = createRoute({
+  method: 'delete',
+  path: '/url',
+  tags: ['Links'],
+  summary: 'Delete URLs',
+  description: 'Soft delete URLs by hash. Requires JWT authentication.',
+  request: {
+    body: {
+      content: {
+        'application/json': {
+          schema: deleteUrlRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            code: z.number(),
+            message: z.string(),
+            data: BatchOperationResponseSchema,
+          }),
+        },
+      },
+      description: 'URLs deletion result',
+    },
+    500: {
+      content: {
+        'application/json': {
+          schema: ErrorResponseSchema,
+        },
+      },
+      description: 'Internal server error',
+    },
+  },
+})
+
+apiRoutes.openapi(deleteUrlsRoute, async (c) => {
   logger.info('DELETE /api/url - Soft deleting URLs')
 
   try {
@@ -383,7 +593,7 @@ apiRoutes.delete('/url', zValidator('json', deleteUrlRequestSchema), async (c) =
       logger.warn(`Some URL deletions failed: ${failures.map((f) => ({ hash: f.hash, error: f.error }))}`)
     }
 
-    return c.json<ApiResponse<BatchOperationResponse>>({
+    return c.json({
       code: 0,
       message: 'ok',
       data: {
