@@ -16,8 +16,7 @@
       "binding": "DB",
       "database_name": "shortener-db",
       "migrations_dir": "./src/database",
-      // "database_id": "your-database-id-here",
-      "database_id": "02a132fa-63f5-4371-8202-d49e7c4246f3",
+      "database_id": "your-database-id-here"
     }
   ],
   // "kv_namespaces": [

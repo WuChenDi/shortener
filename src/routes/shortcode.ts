@@ -3,7 +3,7 @@ import { links } from '@/database/schema'
 import { eq } from 'drizzle-orm'
 import { sha256 } from '@noble/hashes/sha2'
 import { bytesToHex } from '@noble/hashes/utils'
-import type { CloudflareEnv, Variables } from '@/types'
+import type { CloudflareEnv, Variables, ServiceHealthResponse } from '@/types'
 import { useDrizzle } from '@/lib/db'
 import { withNotDeleted } from '@/lib/db-utils'
 
@@ -21,14 +21,38 @@ function escapeHtml(unsafe: string): string {
     .replace(/'/g, '&#039;')
 }
 
+function generateOgPageHtml(targetUrl: string): string {
+  const escapedUrl = escapeHtml(targetUrl)
+
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@cdlab/shortener</title>
+    <meta property="og:url" content="${escapedUrl}" />
+    <meta property="og:type" content="website" />
+    <meta name="robots" content="noindex, nofollow" />
+    <script>
+      window.location.replace('${escapedUrl}');
+    </script>
+    <noscript>
+      <meta http-equiv="refresh" content="0;url=${escapedUrl}" />
+    </noscript>
+  </head>
+  <body>
+    <p>Redirecting to <a href="${escapedUrl}">${escapedUrl}</a>...</p>
+  </body>
+</html>`
+}
+
 // GET / - Service health check and info
 shortCodeRoutes.get('/', async (c) => {
   logger.info('Service health check requested')
 
   try {
-    // Test database connection
     const db = useDrizzle(c)
-    let dbStatus = 'unknown'
+    let dbStatus: 'connected' | 'disconnected' = 'disconnected'
 
     try {
       // Simple database connectivity test
@@ -40,7 +64,7 @@ shortCodeRoutes.get('/', async (c) => {
       logger.warn('Database connectivity test failed', dbError)
     }
 
-    const serviceInfo = {
+    const serviceInfo: ServiceHealthResponse = {
       service: '@cdlab/shortener',
       status: 'healthy',
       timestamp: new Date().toISOString(),
@@ -55,14 +79,16 @@ shortCodeRoutes.get('/', async (c) => {
     return c.json(serviceInfo)
   } catch (error) {
     logger.error('Error during health check', error)
-    
-    return c.json({
+
+    const errorResponse: ServiceHealthResponse = {
       service: '@cdlab/shortener',
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
       version: '1.0.0',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }, 500)
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+
+    return c.json(errorResponse, 500)
   }
 })
 
@@ -143,7 +169,6 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
       {
         code: 500,
         message: errorMessage,
-        data: [],
       },
       500
     )
@@ -157,12 +182,12 @@ shortCodeRoutes.get('/:shortCode/og', async (c) => {
   logger.info(`Processing OG page request for shortcode: ${shortCode}`)
 
   try {
-    if (!shortCode) {
-      logger.warn('OG page requested without shortcode')
+    if (!shortCode || shortCode.trim() === '') {
+      logger.warn('OG page requested without valid shortcode')
       return c.json(
         {
           code: 400,
-          message: 'Short code not provided',
+          message: 'Short code not provided or invalid',
         },
         400
       )
@@ -209,21 +234,7 @@ shortCodeRoutes.get('/:shortCode/og', async (c) => {
     const { url: targetUrl } = urlData
     logger.info(`Serving OG page for shortcode ${shortCode}, target: ${targetUrl}`)
 
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>@cdlab/shortener</title>
-          <meta property="og:url" content="${escapeHtml(targetUrl)}" />
-          <meta property="og:type" content="website" />
-        </head>
-        <body>
-          <script>
-            window.location.href = '${escapeHtml(targetUrl)}';
-          </script>
-        </body>
-      </html>
-    `
+    const html = generateOgPageHtml(targetUrl)
 
     logger.debug(`OG page HTML generated for shortcode: ${shortCode}`)
     return c.html(html)
@@ -235,7 +246,6 @@ shortCodeRoutes.get('/:shortCode/og', async (c) => {
       {
         code: 500,
         message: errorMessage,
-        data: [],
       },
       500
     )

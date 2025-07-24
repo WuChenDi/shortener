@@ -1,11 +1,72 @@
 import { Hono } from 'hono'
+import { zValidator } from '@hono/zod-validator'
+import { z } from 'zod'
 import { links } from '@/database/schema'
 import { eq } from 'drizzle-orm'
-import type { CloudflareEnv, Variables } from '@/types'
+import { sha256 } from '@noble/hashes/sha2'
+import { bytesToHex } from '@noble/hashes/utils'
+import type {
+  ApiResponse,
+  BatchOperationResponse,
+  CloudflareEnv,
+  CreateUrlRequest,
+  Variables,
+} from '@/types'
 import { useDrizzle } from '@/lib/db'
 import { notDeleted, withNotDeleted, softDelete } from '@/lib/db-utils'
 
 export const apiRoutes = new Hono<{ Bindings: CloudflareEnv; Variables: Variables }>()
+
+// Utility function to generate a random hash
+function generateRandomHash(length: number = 8) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  let result = ''
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return result
+}
+
+// Utility function to get default expiration time (1 hour from now)
+function getDefaultExpiresAt() {
+  const now = new Date()
+  now.setHours(now.getHours() + 1)
+  return now.getTime()
+}
+
+const urlRecordSchema = z.object({
+  url: z.url('Invalid URL format'),
+  hash: z.string().optional(),
+  expiresAt: z.number().int().positive().optional(),
+  userId: z.string().optional(),
+  attribute: z.any().optional(),
+})
+
+const updateUrlRecordSchema = z.object({
+  hash: z.string().min(1, 'Hash is required'),
+  url: z.url('Invalid URL format').optional(),
+  userId: z.string().optional(),
+  expiresAt: z.number().int().positive().optional(),
+  attribute: z.any().optional(),
+})
+
+const createUrlRequestSchema = z.object({
+  records: z.array(urlRecordSchema).min(1, 'At least one record is required'),
+})
+
+const updateUrlRequestSchema = z.object({
+  records: z.array(updateUrlRecordSchema).min(1, 'At least one record is required'),
+})
+
+const deleteUrlRequestSchema = z.object({
+  hashList: z
+    .array(z.string().min(1, 'Hash cannot be empty'))
+    .min(1, 'At least one hash is required'),
+})
+
+const isDeletedQuerySchema = z.object({
+  isDeleted: z.string().optional(),
+})
 
 // POST /api/page
 apiRoutes.post('/page', async (c) => {
@@ -15,9 +76,12 @@ apiRoutes.post('/page', async (c) => {
     const db = useDrizzle(c)
     logger.debug('Database connection established for page creation')
 
-    return c.json({
-      db: !!db,
-      code: 200,
+    return c.json<ApiResponse>({
+      code: 0,
+      message: 'ok',
+      data: {
+        db: !!db,
+      },
     })
   } catch (error) {
     logger.error('Error in POST /api/page', error)
@@ -26,8 +90,8 @@ apiRoutes.post('/page', async (c) => {
 })
 
 // GET /api/url
-apiRoutes.get('/url', async (c) => {
-  const isDeleted = c.req.query('isDeleted')
+apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
+  const { isDeleted } = c.req.valid('query')
   logger.info(`GET /api/url - Fetching URLs with isDeleted filter: ${isDeleted}`)
 
   try {
@@ -51,10 +115,10 @@ apiRoutes.get('/url', async (c) => {
     logger.info(`Retrieved ${allLinks?.length || 0} links from database`)
     logger.debug('Retrieved links data:', allLinks)
 
-    return c.json({
+    return c.json<ApiResponse>({
       code: 0,
       message: 'ok',
-      data: allLinks,
+      data: allLinks || [],
     })
   } catch (error) {
     logger.error('Error retrieving URLs from database', error)
@@ -72,41 +136,95 @@ apiRoutes.get('/url', async (c) => {
 })
 
 // POST /api/url
-apiRoutes.post('/url', async (c) => {
+apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => {
   logger.info('POST /api/url - Creating new URLs')
 
   try {
     const db = useDrizzle(c)
-    const { records } = await c.req.json()
+    const requestBody = (await c.req.json()) as CreateUrlRequest
+    const { records } = requestBody
 
-    logger.info(`Processing ${records?.length || 0} URL records for creation`)
-    logger.debug('URL creation request data:', { recordCount: records?.length })
+    const url = new URL(c.req.url)
+    const domain = url.hostname
+
+    logger.info(`Processing ${records.length} URL records for creation`)
 
     const results = await Promise.all(
-      records.map(async (record: any, index: number) => {
-        logger.debug(
-          `Processing record ${index + 1}/${records.length} - hash: ${record.hash}`
-        )
+      records.map(async (record, index) => {
+        let shortCode = record.hash || generateRandomHash()
+
+        let hash = bytesToHex(sha256(`${domain}:${shortCode}`))
+
+        const expiresAt = record.expiresAt || getDefaultExpiresAt()
+
+        logger.debug(`Processing record ${index + 1}/${records.length} - shortCode: ${shortCode}, hash: ${hash}`)
 
         try {
+          const existingRecord = await db
+            ?.select()
+            .from(links)
+            .where(eq(links.hash, hash))
+            .get()
+
+          if (existingRecord) {
+            if (!record.hash) {
+              let attempts = 0
+              while (attempts < 5) {
+                shortCode = generateRandomHash()
+                hash = bytesToHex(sha256(`${domain}:${shortCode}`))
+                
+                const duplicateCheck = await db
+                  ?.select()
+                  .from(links)
+                  .where(eq(links.hash, hash))
+                  .get()
+
+                if (!duplicateCheck) {
+                  break
+                }
+                attempts++
+              }
+
+              if (attempts >= 5) {
+                logger.warn(`Failed to generate unique hash after 5 attempts for URL: ${record.url}`)
+                return {
+                  hash: shortCode,
+                  success: false,
+                  error: 'Failed to generate unique short code',
+                }
+              }
+            } else {
+              logger.warn(`Short code already exists: ${shortCode}`)
+              return {
+                hash: shortCode,
+                success: false,
+                error: 'Short code already exists',
+              }
+            }
+          }
+
           await db?.insert(links).values({
             url: record.url,
             userId: record.userId || '',
-            expiresAt: record.expiresAt,
-            hash: record.hash,
+            expiresAt,
+            hash,
             attribute: record.attribute,
           })
 
-          logger.debug(`Successfully created link with hash: ${record.hash}`)
+          logger.debug(`Successfully created link with shortCode: ${shortCode}, hash: ${hash}`)
           return {
-            hash: record.hash,
+            hash: shortCode,
+            shortUrl: `https://${domain}/${shortCode}`,
             success: true,
+            url: record.url,
+            expiresAt,
           }
         } catch (error) {
-          logger.warn(`Failed to create link with hash: ${record.hash}`, error)
-          const errorMessage = error instanceof Error ? error.message : 'error'
+          logger.warn(`Failed to create link with shortCode: ${shortCode}`, error)
+          const errorMessage =
+            error instanceof Error ? error.message : 'Unknown creation error'
           return {
-            hash: record.hash,
+            hash: shortCode,
             success: false,
             error: errorMessage,
           }
@@ -117,18 +235,9 @@ apiRoutes.post('/url', async (c) => {
     const successes = results.filter((result) => result.success)
     const failures = results.filter((result) => !result.success)
 
-    logger.info(
-      `URL creation completed - Successes: ${successes.length}, Failures: ${failures.length}`
-    )
+    logger.info(`URL creation completed - Successes: ${successes.length}, Failures: ${failures.length}`)
 
-    if (failures.length > 0) {
-      logger.warn(
-        'Some URL creations failed:',
-        failures.map((f) => ({ hash: f.hash, error: f.error }))
-      )
-    }
-
-    return c.json({
+    return c.json<ApiResponse<BatchOperationResponse>>({
       code: 0,
       message: 'ok',
       data: {
@@ -152,32 +261,18 @@ apiRoutes.post('/url', async (c) => {
 })
 
 // PUT /api/url
-apiRoutes.put('/url', async (c) => {
+apiRoutes.put('/url', zValidator('json', updateUrlRequestSchema), async (c) => {
   logger.info('PUT /api/url - Updating URLs')
 
   try {
     const db = useDrizzle(c)
-    const { records } = await c.req.json()
-
-    if (!records || records.length === 0) {
-      logger.warn('PUT /api/url - No records provided for update')
-      return c.json(
-        {
-          code: 400,
-          message: 'No records provided for update',
-          data: null,
-        },
-        400
-      )
-    }
+    const { records } = c.req.valid('json')
 
     logger.info(`Processing ${records.length} URL records for update`)
 
     const results = await Promise.all(
-      records.map(async (record: any, index: number) => {
-        logger.debug(
-          `Processing update for record ${index + 1}/${records.length} - hash: ${record.hash}`
-        )
+      records.map(async (record, index) => {
+        logger.debug(`Processing update for record ${index + 1}/${records.length} - hash: ${record.hash}`)
 
         try {
           const existingRecord = await db
@@ -207,10 +302,7 @@ apiRoutes.put('/url', async (c) => {
           )
 
           if (Object.keys(fieldsToUpdate).length > 0) {
-            logger.debug(
-              `Updating fields for hash ${record.hash}:`,
-              Object.keys(fieldsToUpdate)
-            )
+            logger.debug(`Updating fields for hash ${record.hash}: ${Object.keys(fieldsToUpdate)}`)
 
             await db
               ?.update(links)
@@ -236,7 +328,7 @@ apiRoutes.put('/url', async (c) => {
           return {
             hash: record.hash,
             success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
+            error: error instanceof Error ? error.message : 'Unknown update error',
           }
         }
       })
@@ -245,18 +337,13 @@ apiRoutes.put('/url', async (c) => {
     const successes = results.filter((result) => result.success)
     const failures = results.filter((result) => !result.success)
 
-    logger.info(
-      `URL update completed - Successes: ${successes.length}, Failures: ${failures.length}`
-    )
+    logger.info(`URL update completed - Successes: ${successes.length}, Failures: ${failures.length}`)
 
     if (failures.length > 0) {
-      logger.warn(
-        'Some URL updates failed:',
-        failures.map((f) => ({ hash: f.hash, error: f.error }))
-      )
+      logger.warn(`Some URL updates failed: ${failures.map((f) => ({ hash: f.hash, error: f.error }))}`)
     }
 
-    return c.json({
+    return c.json<ApiResponse<BatchOperationResponse>>({
       code: 0,
       message: 'ok',
       data: {
@@ -280,33 +367,19 @@ apiRoutes.put('/url', async (c) => {
 })
 
 // DELETE /api/url
-apiRoutes.delete('/url', async (c) => {
+apiRoutes.delete('/url', zValidator('json', deleteUrlRequestSchema), async (c) => {
   logger.info('DELETE /api/url - Soft deleting URLs')
 
   try {
     const db = useDrizzle(c)
-    const { hashList } = await c.req.json()
-
-    if (!hashList || hashList.length === 0) {
-      logger.warn('DELETE /api/url - Missing or empty hashList parameter')
-      return c.json(
-        {
-          code: 400,
-          message: 'Missing hashList parameter',
-          data: null,
-        },
-        400
-      )
-    }
+    const { hashList } = c.req.valid('json')
 
     logger.info(`Processing ${hashList.length} URLs for soft deletion`)
     logger.debug('Hash list for deletion:', hashList)
 
     const results = await Promise.all(
-      hashList.map(async (hash: string, index: number) => {
-        logger.debug(
-          `Processing deletion ${index + 1}/${hashList.length} - hash: ${hash}`
-        )
+      hashList.map(async (hash, index) => {
+        logger.debug(`Processing deletion ${index + 1}/${hashList.length} - hash: ${hash}`)
 
         try {
           const record = await db
@@ -337,7 +410,8 @@ apiRoutes.delete('/url', async (c) => {
           }
         } catch (error) {
           logger.error(`Error soft deleting record with hash ${hash}`, error)
-          const errorMessage = error instanceof Error ? error.message : 'error'
+          const errorMessage =
+            error instanceof Error ? error.message : 'Unknown deletion error'
           return {
             hash,
             success: false,
@@ -350,18 +424,13 @@ apiRoutes.delete('/url', async (c) => {
     const successes = results.filter((result) => result.success)
     const failures = results.filter((result) => !result.success)
 
-    logger.info(
-      `URL deletion completed - Successes: ${successes.length}, Failures: ${failures.length}`
-    )
+    logger.info(`URL deletion completed - Successes: ${successes.length}, Failures: ${failures.length}`)
 
     if (failures.length > 0) {
-      logger.warn(
-        'Some URL deletions failed:',
-        failures.map((f) => ({ hash: f.hash, error: f.error }))
-      )
+      logger.warn(`Some URL deletions failed: ${failures.map((f) => ({ hash: f.hash, error: f.error }))}`)
     }
 
-    return c.json({
+    return c.json<ApiResponse<BatchOperationResponse>>({
       code: 0,
       message: 'ok',
       data: {

@@ -241,11 +241,11 @@ Request body:
 {
   "records": [
     {
-      "url": "https://example.com",
-      "userId": "user123",
-      "hash": "abc123",
-      "expiresAt": null,
-      "attribute": null
+      "url": "https://example.com", // Required, target URL
+      "userId": "user123", // Optional, default is an empty string
+      "hash": "abc123", // Optional, Automatically generated an 8-bit random string
+      "expiresAt": null, // Optional, default is 1 hour from now (timestamp in milliseconds)
+      "attribute": null // Optional, additional attributes as JSON
     }
   ]
 }
@@ -260,11 +260,11 @@ Request body:
 {
   "records": [
     {
-      "hash": "abc123",
-      "url": "https://new-url.com",
-      "userId": "user123",
-      "expiresAt": null,
-      "attribute": null
+      "hash": "abc123", // Required, the hash of the link to update
+      "url": "https://new-url.com", // Optional, new target URL
+      "userId": "user456", // Optional, new user ID
+      "expiresAt": 1721808000000, // Optional, new expiration timestamp (milliseconds)
+      "attribute": {"updated": true, "category": "work"} // Optional, new additional attributes
     }
   ]
 }

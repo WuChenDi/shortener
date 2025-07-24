@@ -23,11 +23,9 @@ export const links = sqliteTable(
     attribute: blob('attribute'),
     ...trackingFields,
   },
-  (table) => {
-    return {
-      sha1: uniqueIndex('links_hash').on(table.hash),
-    }
-  }
+  (table) => [
+    uniqueIndex('links_hash').on(table.hash),
+  ]
 )
 
 export const pages = sqliteTable(
@@ -42,9 +40,7 @@ export const pages = sqliteTable(
     attribute: blob('attribute'),
     ...trackingFields,
   },
-  (table) => {
-    return {
-      sha1: uniqueIndex('pages_hash').on(table.hash),
-    }
-  }
+  (table) => [
+    uniqueIndex('pages_hash').on(table.hash),
+  ]
 )
