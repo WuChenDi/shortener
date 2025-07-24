@@ -201,14 +201,6 @@ pnpm run generate-jwt
   "status": "healthy",
   "timestamp": "2025-07-24T07:48:52.267Z",
   "version": "1.0.0",
-  "database": {
-    "type": "d1",
-    "status": "connected"
-  },
-  "environment": {
-    "nodeEnv": "production",
-    "debug": false
-  }
 }
 ```
 
