@@ -64,7 +64,7 @@ graph TB
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/WuChenDi/shortener.git
 cd shortener
 
 # Install dependencies
@@ -79,34 +79,54 @@ cp .env.example .env
 ### Environment Variables
 
 ```bash
-# Database configuration
-DB_TYPE=libsql                    # Options: libsql, d1
-LIBSQL_URL=file:./web/database/data.db
-LIBSQL_AUTH_TOKEN=your-token-here
+# LibSQL Configuration
+# The URL for connecting to the LibSQL database. Default is a local SQLite file.
+LIBSQL_URL=libsql://your-libsql-database-url
 
-# Development environment
-NODE_ENV=dev                      # Options: dev, production
+# The authentication token for accessing the LibSQL database.
+LIBSQL_AUTH_TOKEN=your-libsql-auth-token
+
+# Database Type
+# Specify the type of database being used. Choose 'libsql' for LibSQL or 'd1' for Cloudflare D1.
+# This determines which credentials and driver will be used in the configuration.
+DB_TYPE=libsql
+
+# JWT_PUBKEY
+JWT_PUBKEY=your-jwt-public-key
+CDN_URL=your-cdn-url
+
 ```
 
 ### wrangler.jsonc
 
 ```json
 {
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "shortener",
   "main": "src/index.ts",
   "compatibility_date": "2025-07-24",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "vars": {
-    "JWT_PUBKEY": "your-jwt-public-key-hex"
+    "DB_TYPE": "d1",
+    "JWT_PUBKEY": "your-jwt-public-key",
+    "CDN_URL": "https://your-cdn-url.com/"
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "shortener-db",
-      "database_id": "your-database-id",
-      "migrations_dir": "./src/database"
+      "migrations_dir": "./src/database",
+      "database_id": "your-database-id-here",
     }
-  ]
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
 }
+
 ```
 
 **Generate JWT_PUBKEY:**
@@ -335,43 +355,6 @@ pnpm run deploy
 # Preview deployment
 pnpm run preview
 ```
-
-### Local Deployment
-
-```bash
-# Build project
-pnpm run build
-
-# Start production server
-pnpm start
-```
-
-## 🔍 Logging
-
-- **Access Logs**: Records all HTTP requests.
-- **Operation Logs**: Tracks database and business logic operations.
-- **Error Logs**: Captures exceptions and errors.
-- **Debug Logs**: Detailed debugging info (development only).
-
-Log levels:
-- `DEBUG`: Development-only debugging.
-- `INFO`: General information.
-- `WARN`: Warnings.
-- `ERROR`: Errors.
-
-## 🤝 Contributing
-
-1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature/amazing-feature`).
-3. Commit changes (`git commit -m 'Add amazing feature'`).
-4. Push the branch (`git push origin feature/amazing-feature`).
-5. Create a Pull Request.
-
-## 🆘 Support
-
-- Check the [Issues](../../issues) page.
-- Create a new issue for problems or questions.
-- Contact the maintainers.
 
 ## 📜 License
 
