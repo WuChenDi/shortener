@@ -5,6 +5,7 @@ import { sha256 } from '@noble/hashes/sha2'
 import { bytesToHex } from '@noble/hashes/utils'
 import { useDrizzle, withNotDeleted } from '@/lib'
 import type { CloudflareEnv, Variables, ServiceHealthResponse, UrlData } from '@/types'
+import pkg from '@/../package.json'
 
 export const shortCodeRoutes = new Hono<{
   Bindings: CloudflareEnv
@@ -67,7 +68,7 @@ shortCodeRoutes.get('/', async (c) => {
       service: '@cdlab/shortener',
       status: 'healthy',
       timestamp: new Date().toISOString(),
-      version: '1.0.0'
+      version: pkg.version
     }
 
     logger.info('Service health check completed', {
@@ -83,7 +84,7 @@ shortCodeRoutes.get('/', async (c) => {
       service: '@cdlab/shortener',
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
-      version: '1.0.0',
+      version: pkg.version,
       error: error instanceof Error ? error.message : 'Unknown error',
     }
 

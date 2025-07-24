@@ -1,7 +1,10 @@
 {
   "name": "shortener",
   "type": "module",
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "description": "A URL shortener service built with Cloudflare Workers and Hono.",
+  "author": "wudi <wuchendi96@gmail.com>",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/WuChenDi/shortener.git"

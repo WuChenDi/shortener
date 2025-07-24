@@ -1,6 +1,6 @@
 # @cdlab/shortener
 
-A modern short-link service built with Hono.
+A URL shortener service built with Cloudflare Workers and Hono.
 
 - **Tips**: For information about OpenAPI and Swagger, please refer to the [feat/swagger-openapi](https://github.com/WuChenDi/shortener/tree/feat/swagger-openapi) branch.
 
