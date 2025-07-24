@@ -199,8 +199,8 @@ pnpm run generate-jwt
 {
   "service": "@cdlab/shortener",
   "status": "healthy",
-  "timestamp": "2025-07-24T07:48:52.267Z",
-  "version": "1.0.0",
+  "timestamp": "2025-07-24T10:36:20.768Z",
+  "version": "1.0.0"
 }
 ```
 
@@ -220,14 +220,16 @@ Response:
   "message": "ok",
   "data": [
     {
-      "id": 1,
-      "url": "https://example.com",
-      "userId": "user123",
-      "hash": "abc123",
-      "expiresAt": null,
-      "createdAt": "2025-07-24T07:48:52.267Z",
-      "updatedAt": "2025-07-24T07:48:52.267Z"
-    }
+      "id": 3,
+      "url": "https://bit.ly/m/wuchendi",
+      "userId": "",
+      "expiresAt": 1753356199203,
+      "hash": "f6b0c8f15eb1ca108ba7002e3eb97ef180d5de85eeac92ab20a43719fb9a683a",
+      "attribute": null,
+      "createdAt": "2025-07-24T10:23:19.000Z",
+      "updatedAt": "2025-07-24T10:23:19.000Z",
+      "isDeleted": 0
+    },
   ]
 }
 ```
@@ -241,13 +243,33 @@ Request body:
 {
   "records": [
     {
-      "url": "https://example.com", // Required, target URL
-      "userId": "user123", // Optional, default is an empty string
-      "hash": "abc123", // Optional, Automatically generated an 8-bit random string
+      "url": "https://bit.ly/m/wuchendi", // Required, target URL
+      "userId": "wudi", // Optional, default is an empty string
+      "hash": "zCwixTtm", // Optional, Automatically generated an 8-bit random string
       "expiresAt": null, // Optional, default is 1 hour from now (timestamp in milliseconds)
       "attribute": null // Optional, additional attributes as JSON
     }
   ]
+}
+```
+
+Response:
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "successes": [
+      {
+        "hash": "zCwixTtm",
+        "shortUrl": "https://shortener.cdlab.workers.dev/zCwixTtm",
+        "success": true,
+        "url": "https://bit.ly/m/wuchendi",
+        "expiresAt": 1753356378707
+      }
+    ],
+    "failures": []
+  }
 }
 ```
 
@@ -277,7 +299,30 @@ Request body:
 Request body:
 ```json
 {
-  "hashList": ["abc123", "def456"]
+  "hashList": ["nqmSGVbv", "uXbVgEX1"]
+}
+```
+
+Response:
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "successes": [
+        {
+          "hash": "uXbVgEX1",
+          "success": true
+        }
+    ],
+    "failures": [
+      {
+        "hash": "nqmSGVbv",
+        "success": false,
+        "error": "Record not found or already deleted"
+      }
+    ]
+  }
 }
 ```
 
