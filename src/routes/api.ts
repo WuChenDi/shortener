@@ -1,6 +1,5 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
-import { z } from 'zod'
 import { links } from '@/database/schema'
 import { eq } from 'drizzle-orm'
 import { sha256 } from '@noble/hashes/sha2'
@@ -9,64 +8,19 @@ import type {
   ApiResponse,
   BatchOperationResponse,
   CloudflareEnv,
-  CreateUrlRequest,
   Variables,
 } from '@/types'
 import { useDrizzle } from '@/lib/db'
 import { notDeleted, withNotDeleted, softDelete } from '@/lib/db-utils'
+import { generateRandomHash, getDefaultExpiresAt } from '@/utils'
+import {
+  isDeletedQuerySchema,
+  createUrlRequestSchema,
+  updateUrlRequestSchema,
+  deleteUrlRequestSchema,
+} from '@/utils/url.validator'
 
 export const apiRoutes = new Hono<{ Bindings: CloudflareEnv; Variables: Variables }>()
-
-// Utility function to generate a random hash
-function generateRandomHash(length: number = 8) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  let result = ''
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return result
-}
-
-// Utility function to get default expiration time (1 hour from now)
-function getDefaultExpiresAt() {
-  const now = new Date()
-  now.setHours(now.getHours() + 1)
-  return now.getTime()
-}
-
-const urlRecordSchema = z.object({
-  url: z.url('Invalid URL format'),
-  hash: z.string().optional(),
-  expiresAt: z.number().int().positive().optional(),
-  userId: z.string().optional(),
-  attribute: z.any().optional(),
-})
-
-const updateUrlRecordSchema = z.object({
-  hash: z.string().min(1, 'Hash is required'),
-  url: z.url('Invalid URL format').optional(),
-  userId: z.string().optional(),
-  expiresAt: z.number().int().positive().optional(),
-  attribute: z.any().optional(),
-})
-
-const createUrlRequestSchema = z.object({
-  records: z.array(urlRecordSchema).min(1, 'At least one record is required'),
-})
-
-const updateUrlRequestSchema = z.object({
-  records: z.array(updateUrlRecordSchema).min(1, 'At least one record is required'),
-})
-
-const deleteUrlRequestSchema = z.object({
-  hashList: z
-    .array(z.string().min(1, 'Hash cannot be empty'))
-    .min(1, 'At least one hash is required'),
-})
-
-const isDeletedQuerySchema = z.object({
-  isDeleted: z.string().optional(),
-})
 
 // POST /api/page
 apiRoutes.post('/page', async (c) => {
@@ -141,8 +95,7 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
 
   try {
     const db = useDrizzle(c)
-    const requestBody = (await c.req.json()) as CreateUrlRequest
-    const { records } = requestBody
+    const { records } = c.req.valid('json')
 
     const url = new URL(c.req.url)
     const domain = url.hostname
