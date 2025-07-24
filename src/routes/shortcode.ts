@@ -3,9 +3,8 @@ import { links } from '@/database/schema'
 import { eq } from 'drizzle-orm'
 import { sha256 } from '@noble/hashes/sha2'
 import { bytesToHex } from '@noble/hashes/utils'
+import { useDrizzle, withNotDeleted } from '@/lib'
 import type { CloudflareEnv, Variables, ServiceHealthResponse, UrlData } from '@/types'
-import { useDrizzle } from '@/lib/db'
-import { withNotDeleted } from '@/lib/db-utils'
 
 export const shortCodeRoutes = new Hono<{
   Bindings: CloudflareEnv
