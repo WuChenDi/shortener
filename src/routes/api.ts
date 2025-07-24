@@ -91,7 +91,7 @@ apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
 
 // POST /api/url
 apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => {
-  logger.info('POST /api/url - Creating new URLs')
+  logger.info('POST /api/url - Creating new URLs with optimized hash algorithm')
 
   try {
     const db = useDrizzle(c)
@@ -163,6 +163,30 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
             hash,
             attribute: record.attribute,
           })
+
+          // Cache the newly created URL
+          if (c.env.SHORTENER_KV) {
+            try {
+              const cacheKey = `url:${hash}`
+              const cacheData = {
+                url: record.url,
+                hash,
+                expiresAt,
+                userId: record.userId || '',
+                attribute: record.attribute,
+                id: null, // New record does not have an ID yet
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                isDeleted: 0
+              }
+              await c.env.SHORTENER_KV.put(cacheKey, JSON.stringify(cacheData), {
+                expirationTtl: 3600 // Cache for 1 hour
+              })
+              logger.debug(`Cached new URL for shortCode: ${shortCode}`)
+            } catch (cacheError) {
+              logger.warn('Cache write error during URL creation', cacheError)
+            }
+          }
 
           logger.debug(`Successfully created link with shortCode: ${shortCode}, hash: ${hash}`)
           return {
@@ -263,6 +287,18 @@ apiRoutes.put('/url', zValidator('json', updateUrlRequestSchema), async (c) => {
               .where(withNotDeleted(links, eq(links.hash, record.hash)))
               .execute()
 
+            // Update cache
+            if (c.env.SHORTENER_KV) {
+              try {
+                const cacheKey = `url:${record.hash}`
+                // Clear old cache so that the next access fetches the latest data from the database
+                await c.env.SHORTENER_KV.delete(cacheKey)
+                logger.debug(`Cleared cache for updated hash: ${record.hash}`)
+              } catch (cacheError) {
+                logger.warn('Cache clear error during URL update', cacheError)
+              }
+            }
+
             logger.debug(`Successfully updated link with hash: ${record.hash}`)
             return {
               hash: record.hash,
@@ -347,6 +383,19 @@ apiRoutes.delete('/url', zValidator('json', deleteUrlRequestSchema), async (c) =
               .set(softDelete())
               .where(eq(links.hash, hash))
               .execute()
+
+            // Clear cache
+            if (c.env.SHORTENER_KV) {
+              try {
+                const cacheKey = `url:${hash}`
+                const ogCacheKey = `og:${hash}`
+                await c.env.SHORTENER_KV.delete(cacheKey)
+                await c.env.SHORTENER_KV.delete(ogCacheKey)
+                logger.debug(`Cleared cache for deleted hash: ${hash}`)
+              } catch (cacheError) {
+                logger.warn('Cache clear error during URL deletion', cacheError)
+              }
+            }
 
             logger.debug(`Successfully soft deleted link with hash: ${hash}`)
             return {

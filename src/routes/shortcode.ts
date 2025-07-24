@@ -3,7 +3,7 @@ import { links } from '@/database/schema'
 import { eq } from 'drizzle-orm'
 import { sha256 } from '@noble/hashes/sha2'
 import { bytesToHex } from '@noble/hashes/utils'
-import type { CloudflareEnv, Variables, ServiceHealthResponse } from '@/types'
+import type { CloudflareEnv, Variables, ServiceHealthResponse, UrlData } from '@/types'
 import { useDrizzle } from '@/lib/db'
 import { withNotDeleted } from '@/lib/db-utils'
 
@@ -110,18 +110,51 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
     // Check for social media crawlers
     if (userAgent.includes('facebookexternalhit') || userAgent.includes('twitterbot')) {
       logger.info(`Social media crawler detected, redirecting to OG page: ${shortCode}`)
-      return c.redirect(`/u/${shortCode}/og`, 302)
+      return c.redirect(`/${shortCode}/og`, 302)
     }
 
     const hash = bytesToHex(sha256(`${domain}:${shortCode}`))
     logger.debug(`Generated hash for lookup: ${hash}`)
 
-    const urlData = await db
-      ?.select()
-      .from(links)
-      .where(withNotDeleted(links, eq(links.hash, hash)))
-      .limit(1)
-      .get()
+    // Caching strategy: Check KV cache first
+    const cacheKey = `url:${hash}`
+    let urlData: UrlData | null = null
+    
+    if (c.env.SHORTENER_KV) {
+      try {
+        const cached = await c.env.SHORTENER_KV.get(cacheKey, 'json')
+        if (cached) {
+          urlData = cached as UrlData
+          logger.debug(`Cache hit for shortcode: ${shortCode}`)
+        } else {
+          logger.debug(`Cache miss for shortcode: ${shortCode}`)
+        }
+      } catch (cacheError) {
+        logger.warn('Cache read error, falling back to database', cacheError)
+      }
+    }
+
+    // If cache miss, query the database
+    if (!urlData) {
+      urlData = await db
+        ?.select()
+        .from(links)
+        .where(withNotDeleted(links, eq(links.hash, hash)))
+        .limit(1)
+        .get() || null
+
+      // If found, write to cache
+      if (urlData && c.env.SHORTENER_KV) {
+        try {
+          await c.env.SHORTENER_KV.put(cacheKey, JSON.stringify(urlData), {
+            expirationTtl: 3600 // Cache for 1 hour
+          })
+          logger.debug(`Cached URL data for shortcode: ${shortCode}`)
+        } catch (cacheError) {
+          logger.warn('Cache write error', cacheError)
+        }
+      }
+    }
 
     if (!urlData) {
       logger.warn(`Shortcode not found: ${shortCode} (hash: ${hash})`)
@@ -142,6 +175,16 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
         currentTime: Date.now(),
         expired: isExpired,
       })
+      
+      // delete cache if expired
+      if (c.env.SHORTENER_KV) {
+        try {
+          await c.env.SHORTENER_KV.delete(cacheKey)
+        } catch (cacheError) {
+          logger.warn('Cache delete error', cacheError)
+        }
+      }
+      
       return c.json(
         {
           code: 404,
@@ -200,7 +243,24 @@ shortCodeRoutes.get('/:shortCode/og', async (c) => {
 
     logger.debug(`OG page lookup - domain: ${domain}, hash: ${hash}`)
 
-    const urlData = await db
+    // Caching strategy: Check OG page cache first
+    const ogCacheKey = `og:${hash}`
+    let cachedHtml: string | null = null
+    
+    if (c.env.SHORTENER_KV) {
+      try {
+        cachedHtml = await c.env.SHORTENER_KV.get(ogCacheKey)
+        if (cachedHtml) {
+          logger.debug(`OG page cache hit for shortcode: ${shortCode}`)
+          return c.html(cachedHtml)
+        }
+      } catch (cacheError) {
+        logger.warn('OG cache read error', cacheError)
+      }
+    }
+
+    // Query the database
+    const urlData: UrlData | undefined = await db
       ?.select()
       .from(links)
       .where(withNotDeleted(links, eq(links.hash, hash)))
@@ -235,6 +295,17 @@ shortCodeRoutes.get('/:shortCode/og', async (c) => {
     logger.info(`Serving OG page for shortcode ${shortCode}, target: ${targetUrl}`)
 
     const html = generateOgPageHtml(targetUrl)
+
+    if (c.env.SHORTENER_KV) {
+      try {
+        await c.env.SHORTENER_KV.put(ogCacheKey, html, {
+          expirationTtl: 3600 // Cache for 1 hour
+        })
+        logger.debug(`Cached OG page for shortcode: ${shortCode}`)
+      } catch (cacheError) {
+        logger.warn('OG cache write error', cacheError)
+      }
+    }
 
     logger.debug(`OG page HTML generated for shortcode: ${shortCode}`)
     return c.html(html)

@@ -19,12 +19,12 @@
       "database_id": "your-database-id-here"
     }
   ],
-  // "kv_namespaces": [
-  //   {
-  //     "binding": "KV",
-  //     "id": "your-kv-namespace-id-here"
-  //   }
-  // ],
+  "kv_namespaces": [
+    {
+      "binding": "SHORTENER_KV",
+      "id": "your-kv-namespace-id-here"
+    }
+  ],
   // "r2_buckets": [
   //   {
   //     "binding": "MY_BUCKET",
