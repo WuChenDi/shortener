@@ -1,12 +1,11 @@
-// src/index.ts
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger as accesslog } from 'hono/logger'
 import { prettyJSON } from 'hono/pretty-json'
 import { HTTPException } from 'hono/http-exception'
-import { jwtMiddleware } from './middleware/jwt'
-import { apiRoutes } from './routes/api'
-import { shortCodeRoutes } from './routes/shortcode'
+import { jwtMiddleware } from '@/middleware/jwt'
+import { apiRoutes } from '@/routes/api'
+import { shortCodeRoutes } from '@/routes/shortcode'
 import type { CloudflareEnv, Variables } from '@/types'
 import './global'
 

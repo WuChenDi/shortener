@@ -1,4 +1,3 @@
-// src/database/schema.ts
 import { blob, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 const trackingFields = {
