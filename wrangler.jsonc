@@ -1,0 +1,42 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "shortener",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-07-24",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "vars": {
+    "DB_TYPE": "d1",
+    "JWT_PUBKEY": "0411cdf71ab04e68498e5a012a0bf632fbf18bd4ffbff458dcf6f5a7200a1ecf5d3a6fb73317a4206e9c0d20e4099818da525be873a6e34f06438974d9607d9bcb",
+    "CDN_URL": "https://your-cdn-url.com/"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "shortener-db",
+      "migrations_dir": "./src/database",
+      // "database_id": "your-database-id-here",
+      "database_id": "02a132fa-63f5-4371-8202-d49e7c4246f3",
+    }
+  ],
+  // "kv_namespaces": [
+  //   {
+  //     "binding": "KV",
+  //     "id": "your-kv-namespace-id-here"
+  //   }
+  // ],
+  // "r2_buckets": [
+  //   {
+  //     "binding": "MY_BUCKET",
+  //     "bucket_name": "my-bucket"
+  //   }
+  // ],
+  // "ai": {
+  //   "binding": "AI"
+  // },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}
