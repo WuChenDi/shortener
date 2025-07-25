@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { links } from '@/database/schema'
 import { eq } from 'drizzle-orm'
-import { useDrizzle, notDeleted, withNotDeleted, softDelete } from '@/lib'
+import { useDrizzle, withNotDeleted, softDelete } from '@/lib'
 import {
   generateRandomHash,
   getDefaultExpiresAt,
