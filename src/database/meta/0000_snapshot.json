@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "1c0c65c0-7139-43c2-a284-7a3d6906bab1",
+  "id": "1b2043ce-3585-4750-9803-4b3cbd4785ca",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "links": {
@@ -42,6 +42,20 @@
           "notNull": true,
           "autoincrement": false
         },
+        "short_code": {
+          "name": "short_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "domain": {
+          "name": "domain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "attribute": {
           "name": "attribute",
           "type": "blob",
@@ -77,6 +91,14 @@
           "name": "links_hash",
           "columns": [
             "hash"
+          ],
+          "isUnique": true
+        },
+        "links_short_code_domain": {
+          "name": "links_short_code_domain",
+          "columns": [
+            "short_code",
+            "domain"
           ],
           "isUnique": true
         }

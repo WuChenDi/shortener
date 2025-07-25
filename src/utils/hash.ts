@@ -46,6 +46,9 @@ export function generateRandomHash(length: number = 8): string {
   return shortCode
 }
 
+/**
+ * Generate a hash from domain and shortCode
+ */
 export function generateHashFromDomainAndCode(domain: string, shortCode: string): string {
   return bytesToHex(sha256(`${domain}:${shortCode}`))
 }

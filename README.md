@@ -276,6 +276,8 @@ Response:
       "userId": "",
       "expiresAt": 1753356199203,
       "hash": "f6b0c8f15eb1ca108ba7002e3eb97ef180d5de85eeac92ab20a43719fb9a683a",
+      "shortCode": "X82qSitG",
+      "domain": "shortener.cdlab.workers.dev",
       "attribute": null,
       "createdAt": "2025-07-24T10:23:19.000Z",
       "updatedAt": "2025-07-24T10:23:19.000Z",
@@ -296,7 +298,7 @@ Request body:
     {
       "url": "https://bit.ly/m/wuchendi", // Required, target URL
       "userId": "wudi", // Optional, default is an empty string
-      "hash": "zCwixTtm", // Optional, auto-generated using Base62+timestamp algorithm
+      "hash": "zCwixTtm", // Optional, custom short code (auto-generated using Base62+timestamp algorithm if not provided)
       "expiresAt": null, // Optional, default is 1 hour from now (timestamp in milliseconds)
       "attribute": null // Optional, additional attributes as JSON
     }
@@ -312,8 +314,9 @@ Response:
   "data": {
     "successes": [
       {
-        "hash": "zCwixTtm",
-        "shortUrl": "https://shortener.cdlab.workers.dev/zCwixTtm",
+        "hash": "f6b0c8f15eb1ca108ba7002e3eb97ef180d5de85eeac92ab20a43719fb9a683a",
+        "shortCode": "X82qSitG",
+        "shortUrl": "https://shortener.cdlab.workers.dev/X82qSitG",
         "success": true,
         "url": "https://bit.ly/m/wuchendi",
         "expiresAt": 1753356378707
@@ -335,7 +338,7 @@ Request body:
 {
   "records": [
     {
-      "hash": "abc123", // Required, the hash of the link to update
+      "hash": "f6b0c8f15eb1ca108ba7002e3eb97ef180d5de85eeac92ab20a43719fb9a683a", // Required, the internal hash of the link to update (not the shortCode)
       "url": "https://new-url.com", // Optional, new target URL
       "userId": "user456", // Optional, new user ID
       "expiresAt": 1721808000000, // Optional, new expiration timestamp (milliseconds)
@@ -354,7 +357,7 @@ Request body:
 Request body:
 ```json
 {
-  "hashList": ["nqmSGVbv", "uXbVgEX1"]
+  "hashList": ["f6b0c8f15eb1ca108ba7002e3eb97ef180d5de85eeac92ab20a43719fb9a683a", "uXbVgEX1abc..."]
 }
 ```
 
@@ -414,12 +417,18 @@ Serves HTML with OG tags for social media crawlers.
 | id          | INTEGER | Primary key, auto-increment   |
 | url         | TEXT    | Target URL                   |
 | userId      | TEXT    | User ID                      |
-| hash        | TEXT    | Unique short link hash       |
+| hash        | TEXT    | Unique internal hash for security |
+| shortCode   | TEXT    | User-facing short code       |
+| domain      | TEXT    | Domain name for multi-tenant support |
 | expiresAt   | INTEGER | Expiration timestamp         |
 | attribute   | BLOB    | Additional attributes (JSON) |
 | createdAt   | INTEGER | Creation timestamp           |
 | updatedAt   | INTEGER | Update timestamp             |
 | isDeleted   | INTEGER | Soft delete flag (0/1)       |
+
+**Indexes:**
+- `links_hash` (unique): On `hash` field for internal queries
+- `links_short_code_domain` (unique): On `shortCode + domain` for URL resolution
 
 ### `pages` Table
 

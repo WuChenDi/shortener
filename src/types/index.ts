@@ -46,8 +46,12 @@ export interface ApiResponse<T = any> {
 
 export interface OperationResult {
   hash: string
+  shortCode?: string
   success: boolean
   error?: string
+  shortUrl?: string
+  url?: string
+  expiresAt?: number
 }
 
 export interface BatchOperationResponse {
@@ -71,6 +75,8 @@ export interface UrlData {
   userId: string
   expiresAt: number | null
   hash: string
+  shortCode: string 
+  domain: string
   attribute: unknown
   createdAt: Date
   updatedAt: Date

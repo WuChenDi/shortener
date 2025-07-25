@@ -2,8 +2,6 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { links } from '@/database/schema'
 import { eq } from 'drizzle-orm'
-import { sha256 } from '@noble/hashes/sha2'
-import { bytesToHex } from '@noble/hashes/utils'
 import { useDrizzle, notDeleted, withNotDeleted, softDelete } from '@/lib'
 import {
   generateRandomHash,
@@ -12,6 +10,7 @@ import {
   createUrlRequestSchema,
   updateUrlRequestSchema,
   deleteUrlRequestSchema,
+  generateHashFromDomainAndCode,
 } from '@/utils'
 import type {
   ApiResponse,
@@ -107,11 +106,11 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
 
       // Prioritize user-provided custom short code
       if (record.hash) {
-        const hash = bytesToHex(sha256(`${domain}:${record.hash}`))
+        const hash = generateHashFromDomainAndCode(domain, record.hash)
         const existing = await db?.select().from(links).where(eq(links.hash, hash)).get()
 
         if (existing) {
-          throw new Error(`Custom short code "${record.hash}" already exists`)
+          throw new Error(`Custom short code "${record.hash}" already exists for domain ${domain}`)
         }
 
         return { shortCode: record.hash, hash }
@@ -122,7 +121,7 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
         // Gradually increase short code length as retry count increases to reduce collision probability
         const length = attempt <= 5 ? 8 : attempt <= 10 ? 9 : 10
         const shortCode = generateRandomHash(length)
-        const hash = bytesToHex(sha256(`${domain}:${shortCode}`))
+        const hash = generateHashFromDomainAndCode(domain, shortCode)
 
         // Check if hash exists in database
         const existing = await db?.select().from(links).where(eq(links.hash, hash)).get()
@@ -160,6 +159,8 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
             userId: record.userId || '',
             expiresAt,
             hash,
+            shortCode,
+            domain,
             attribute: record.attribute,
           })
 
@@ -170,6 +171,8 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
               const cacheData = {
                 url: record.url,
                 hash,
+                shortCode,
+                domain,
                 expiresAt,
                 userId: record.userId || '',
                 attribute: record.attribute,
@@ -189,7 +192,8 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
 
           logger.debug(`Successfully created link: ${shortCode} -> ${record.url}`)
           return {
-            hash: shortCode,
+            hash: hash,
+            shortCode: shortCode,
             shortUrl: `https://${domain}/${shortCode}`,
             success: true,
             url: record.url,

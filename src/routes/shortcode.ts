@@ -1,10 +1,8 @@
 import { Hono } from 'hono'
 import { links } from '@/database/schema'
 import { eq } from 'drizzle-orm'
-import { sha256 } from '@noble/hashes/sha2'
-import { bytesToHex } from '@noble/hashes/utils'
 import { useDrizzle, withNotDeleted } from '@/lib'
-import { generateOgPageHtml } from '@/utils'
+import { generateHashFromDomainAndCode, generateOgPageHtml } from '@/utils'
 import type { CloudflareEnv, Variables, ServiceHealthResponse, UrlData } from '@/types'
 import pkg from '@/../package.json'
 
@@ -80,7 +78,7 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
       return c.redirect(`/${shortCode}/og`, 302)
     }
 
-    const hash = bytesToHex(sha256(`${domain}:${shortCode}`))
+    const hash = generateHashFromDomainAndCode(domain, shortCode)
     logger.debug(`Generated hash for lookup: ${hash}`)
 
     // Caching strategy: Check KV cache first
@@ -165,6 +163,7 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
     logger.debug('Redirect details:', {
       shortCode,
       hash,
+      domain,
       targetUrl: urlData.url,
       userId: urlData.userId,
       expiresAt: urlData.expiresAt,
@@ -206,7 +205,7 @@ shortCodeRoutes.get('/:shortCode/og', async (c) => {
     const db = useDrizzle(c)
     const url = new URL(c.req.url)
     const domain = url.hostname
-    const hash = bytesToHex(sha256(`${domain}:${shortCode}`))
+    const hash = generateHashFromDomainAndCode(domain, shortCode)
 
     logger.debug(`OG page lookup - domain: ${domain}, hash: ${hash}`)
 

@@ -18,12 +18,18 @@ export const links = sqliteTable(
     url: text('url').notNull(),
     userId: text('user_id').notNull(),
     expiresAt: integer('expires_at'),
+    // hash is used for internal queries and security checks
     hash: text('hash').notNull(),
+    // shortCode is used for user-friendly URLs
+    shortCode: text('short_code').notNull(),
+    // domain is used to store the domain of the short link
+    domain: text('domain').notNull(),
     attribute: blob('attribute'),
     ...trackingFields,
   },
   (table) => [
     uniqueIndex('links_hash').on(table.hash),
+    uniqueIndex('links_short_code_domain').on(table.shortCode, table.domain),
   ]
 )
 
