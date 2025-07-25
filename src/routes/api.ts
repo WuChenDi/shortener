@@ -24,7 +24,7 @@ export const apiRoutes = new Hono<{ Bindings: CloudflareEnv; Variables: Variable
 
 // POST /api/page
 apiRoutes.post('/page', async (c) => {
-  logger.info('POST /api/page - Creating page')
+  logger.info(`[${c.get('requestId')}] POST /api/page - Creating page`)
 
   try {
     const db = useDrizzle(c)
@@ -50,7 +50,7 @@ apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
   // By default, query undeleted links (isDeleted = 0)
   const filterValue = isDeleted ?? 0
 
-  logger.info(`GET /api/url - Fetching URLs with isDeleted filter: ${filterValue}`)
+  logger.info(`[${c.get('requestId')}] GET /api/url - Fetching URLs with isDeleted filter: ${filterValue}`)
 
   try {
     const db = useDrizzle(c)
@@ -87,7 +87,7 @@ apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
 
 // POST /api/url
 apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => {
-  logger.info('POST /api/url - Creating new URLs with optimized hash algorithm')
+  logger.info(`[${c.get('requestId')}] POST /api/url - Creating new URLs with optimized hash algorithm`)
 
   try {
     const db = useDrizzle(c)
@@ -235,7 +235,7 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
 
 // PUT /api/url
 apiRoutes.put('/url', zValidator('json', updateUrlRequestSchema), async (c) => {
-  logger.info('PUT /api/url - Updating URLs')
+  logger.info(`[${c.get('requestId')}] PUT /api/url - Updating URLs`)
 
   try {
     const db = useDrizzle(c)
@@ -353,7 +353,7 @@ apiRoutes.put('/url', zValidator('json', updateUrlRequestSchema), async (c) => {
 
 // DELETE /api/url
 apiRoutes.delete('/url', zValidator('json', deleteUrlRequestSchema), async (c) => {
-  logger.info('DELETE /api/url - Soft deleting URLs')
+  logger.info(`[${c.get('requestId')}] DELETE /api/url - Soft deleting URLs`)
 
   try {
     const db = useDrizzle(c)

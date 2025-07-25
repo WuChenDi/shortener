@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { logger as accesslog } from 'hono/logger'
 import { prettyJSON } from 'hono/pretty-json'
 import { HTTPException } from 'hono/http-exception'
+import { requestId } from 'hono/request-id'
 import { jwtMiddleware } from '@/middleware/jwt'
 import { apiRoutes } from '@/routes/api'
 import { shortCodeRoutes } from '@/routes/shortcode'
@@ -18,6 +19,7 @@ export const customLogger = (message: string, ...rest: string[]) => {
 // Global middleware
 app.use(accesslog(customLogger))
 app.use('*', prettyJSON())
+app.use('*', requestId())
 app.use('*', cors())
 
 // JWT middleware for API routes

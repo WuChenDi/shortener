@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 import { sha256 } from '@noble/hashes/sha2'
 import { bytesToHex } from '@noble/hashes/utils'
 import { useDrizzle, withNotDeleted } from '@/lib'
+import { generateOgPageHtml } from '@/utils'
 import type { CloudflareEnv, Variables, ServiceHealthResponse, UrlData } from '@/types'
 import pkg from '@/../package.json'
 
@@ -12,43 +13,9 @@ export const shortCodeRoutes = new Hono<{
   Variables: Variables
 }>()
 
-function escapeHtml(unsafe: string): string {
-  return unsafe
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
-
-function generateOgPageHtml(targetUrl: string): string {
-  const escapedUrl = escapeHtml(targetUrl)
-
-  return `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@cdlab/shortener</title>
-    <meta property="og:url" content="${escapedUrl}" />
-    <meta property="og:type" content="website" />
-    <meta name="robots" content="noindex, nofollow" />
-    <script>
-      window.location.replace('${escapedUrl}');
-    </script>
-    <noscript>
-      <meta http-equiv="refresh" content="0;url=${escapedUrl}" />
-    </noscript>
-  </head>
-  <body>
-    <p>Redirecting to <a href="${escapedUrl}">${escapedUrl}</a>...</p>
-  </body>
-</html>`
-}
-
 // GET / - Service health check and info
 shortCodeRoutes.get('/', async (c) => {
-  logger.info('Service health check requested')
+  logger.info(`[${c.get('requestId')}] Service health check requested`)
 
   try {
     const db = useDrizzle(c)
@@ -97,7 +64,7 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
   const shortCode = c.req.param('shortCode')
   const userAgent = c.req.header('user-agent') || ''
 
-  logger.info(`Processing shortcode redirect request: ${shortCode}`)
+  logger.info(`[${c.get('requestId')}] Processing shortcode redirect request: ${shortCode}`)
   logger.debug(`User agent: ${userAgent}`)
 
   try {
@@ -222,7 +189,7 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
 shortCodeRoutes.get('/:shortCode/og', async (c) => {
   const shortCode = c.req.param('shortCode')
 
-  logger.info(`Processing OG page request for shortcode: ${shortCode}`)
+  logger.info(`[${c.get('requestId')}] Processing OG page request for shortcode: ${shortCode}`)
 
   try {
     if (!shortCode || shortCode.trim() === '') {
