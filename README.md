@@ -1,4 +1,4 @@
-# @cdlab/shortener
+# shortener
 
 A URL shortener service built with Cloudflare Workers and Hono.
 
@@ -248,7 +248,7 @@ pnpm run generate-jwt
 
 ```json
 {
-  "service": "@cdlab/shortener",
+  "service": "shortener",
   "status": "healthy",
   "timestamp": "2025-07-24T10:36:20.768Z",
   "version": "1.0.0"

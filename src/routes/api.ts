@@ -87,7 +87,7 @@ apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
 
 // POST /api/url
 apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => {
-  logger.info(`[${c.get('requestId')}] POST /api/url - Creating new URLs with optimized hash algorithm`)
+  logger.info(`[${c.get('requestId')}] POST /api/url - Creating new URLs with optimized hash collision handling`)
 
   try {
     const db = useDrizzle(c)
@@ -98,60 +98,63 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
 
     logger.info(`Processing ${records.length} URL records for creation`)
 
+    // Optimized hash generation function with enhanced collision detection
+    async function generateUniqueHash(
+      record: any,
+      domain: string,
+      maxRetries: number = 15
+    ): Promise<{ shortCode: string; hash: string }> {
+
+      // Prioritize user-provided custom short code
+      if (record.hash) {
+        const hash = bytesToHex(sha256(`${domain}:${record.hash}`))
+        const existing = await db?.select().from(links).where(eq(links.hash, hash)).get()
+
+        if (existing) {
+          throw new Error(`Custom short code "${record.hash}" already exists`)
+        }
+
+        return { shortCode: record.hash, hash }
+      }
+
+      // Generate random short code with enhanced collision detection
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        // Gradually increase short code length as retry count increases to reduce collision probability
+        const length = attempt <= 5 ? 8 : attempt <= 10 ? 9 : 10
+        const shortCode = generateRandomHash(length)
+        const hash = bytesToHex(sha256(`${domain}:${shortCode}`))
+
+        // Check if hash exists in database
+        const existing = await db?.select().from(links).where(eq(links.hash, hash)).get()
+
+        if (!existing) {
+          logger.debug(`Generated unique hash on attempt ${attempt}: ${shortCode}`)
+          return { shortCode, hash }
+        }
+
+        logger.debug(`Hash collision detected on attempt ${attempt}: ${shortCode}, retrying...`)
+
+        // Add random delay after multiple retries to avoid hotspot conflicts
+        if (attempt > 5) {
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 10))
+        }
+      }
+
+      throw new Error(`Failed to generate unique hash after ${maxRetries} attempts`)
+    }
+
+    // Batch process records
     const results = await Promise.all(
       records.map(async (record, index) => {
-        let shortCode = record.hash || generateRandomHash()
-
-        let hash = bytesToHex(sha256(`${domain}:${shortCode}`))
-
-        const expiresAt = record.expiresAt || getDefaultExpiresAt()
-
-        logger.debug(`Processing record ${index + 1}/${records.length} - shortCode: ${shortCode}, hash: ${hash}`)
+        logger.debug(`Processing record ${index + 1}/${records.length}`)
 
         try {
-          const existingRecord = await db
-            ?.select()
-            .from(links)
-            .where(eq(links.hash, hash))
-            .get()
+          // Generate unique hash
+          const { shortCode, hash } = await generateUniqueHash(record, domain)
 
-          if (existingRecord) {
-            if (!record.hash) {
-              let attempts = 0
-              while (attempts < 5) {
-                shortCode = generateRandomHash()
-                hash = bytesToHex(sha256(`${domain}:${shortCode}`))
-                
-                const duplicateCheck = await db
-                  ?.select()
-                  .from(links)
-                  .where(eq(links.hash, hash))
-                  .get()
+          const expiresAt = record.expiresAt || getDefaultExpiresAt()
 
-                if (!duplicateCheck) {
-                  break
-                }
-                attempts++
-              }
-
-              if (attempts >= 5) {
-                logger.warn(`Failed to generate unique hash after 5 attempts for URL: ${record.url}`)
-                return {
-                  hash: shortCode,
-                  success: false,
-                  error: 'Failed to generate unique short code',
-                }
-              }
-            } else {
-              logger.warn(`Short code already exists: ${shortCode}`)
-              return {
-                hash: shortCode,
-                success: false,
-                error: 'Short code already exists',
-              }
-            }
-          }
-
+          // Insert into database
           await db?.insert(links).values({
             url: record.url,
             userId: record.userId || '',
@@ -170,7 +173,7 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
                 expiresAt,
                 userId: record.userId || '',
                 attribute: record.attribute,
-                id: null, // New record does not have an ID yet
+                id: null,
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 isDeleted: 0
@@ -184,7 +187,7 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
             }
           }
 
-          logger.debug(`Successfully created link with shortCode: ${shortCode}, hash: ${hash}`)
+          logger.debug(`Successfully created link: ${shortCode} -> ${record.url}`)
           return {
             hash: shortCode,
             shortUrl: `https://${domain}/${shortCode}`,
@@ -193,13 +196,13 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
             expiresAt,
           }
         } catch (error) {
-          logger.warn(`Failed to create link with shortCode: ${shortCode}`, error)
-          const errorMessage =
-            error instanceof Error ? error.message : 'Unknown creation error'
+          logger.error(`Failed to create link for URL: ${record.url}`, error)
+          const errorMessage = error instanceof Error ? error.message : 'Unknown creation error'
           return {
-            hash: shortCode,
+            hash: record.hash || 'unknown',
             success: false,
             error: errorMessage,
+            url: record.url,
           }
         }
       })
@@ -209,6 +212,15 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
     const failures = results.filter((result) => !result.success)
 
     logger.info(`URL creation completed - Successes: ${successes.length}, Failures: ${failures.length}`)
+
+    // Log failure details for debugging
+    if (failures.length > 0) {
+      logger.warn('URL creation failures:', failures.map(f => ({
+        url: f.url,
+        hash: f.hash,
+        error: f.error
+      })))
+    }
 
     return c.json<ApiResponse<BatchOperationResponse>>({
       code: 0,

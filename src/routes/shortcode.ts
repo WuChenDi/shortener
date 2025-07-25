@@ -32,7 +32,7 @@ shortCodeRoutes.get('/', async (c) => {
     }
 
     const serviceInfo: ServiceHealthResponse = {
-      service: '@cdlab/shortener',
+      service: pkg.name,
       status: 'healthy',
       timestamp: new Date().toISOString(),
       version: pkg.version
@@ -48,7 +48,7 @@ shortCodeRoutes.get('/', async (c) => {
     logger.error('Error during health check', error)
 
     const errorResponse: ServiceHealthResponse = {
-      service: '@cdlab/shortener',
+      service: pkg.name,
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
       version: pkg.version,
