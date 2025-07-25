@@ -73,5 +73,8 @@ export const queryUrlSchema = z.object({
 })
 
 export const isDeletedQuerySchema = z.object({
-  isDeleted: z.string().optional(),
+  isDeleted: z
+    .union([z.literal('0'), z.literal('1')])
+    .optional()
+    .transform(val => val ? Number(val) : undefined),
 })

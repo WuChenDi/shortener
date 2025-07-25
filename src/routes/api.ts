@@ -46,26 +46,22 @@ apiRoutes.post('/page', async (c) => {
 // GET /api/url
 apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
   const { isDeleted } = c.req.valid('query')
-  logger.info(`GET /api/url - Fetching URLs with isDeleted filter: ${isDeleted}`)
+
+  // By default, query undeleted links (isDeleted = 0)
+  const filterValue = isDeleted ?? 0
+
+  logger.info(`GET /api/url - Fetching URLs with isDeleted filter: ${filterValue}`)
 
   try {
     const db = useDrizzle(c)
     logger.debug('Database connection established for URL retrieval')
 
-    let allLinks
+    logger.debug(`Querying links with isDeleted = ${filterValue}`)
+    const allLinks = await db
+      ?.select()
+      .from(links)
+      .where(eq(links.isDeleted, filterValue))
 
-    if (typeof isDeleted !== 'undefined') {
-      logger.debug(`Querying links with isDeleted = ${isDeleted}`)
-      allLinks = await db
-        ?.select()
-        .from(links)
-        .where(eq(links.isDeleted, Number(isDeleted)))
-    } else {
-      logger.debug('Querying active links (not deleted)')
-      allLinks = await db?.select().from(links).where(notDeleted(links))
-    }
-
-    // @ts-ignore
     logger.info(`Retrieved ${allLinks?.length || 0} links from database`)
     logger.debug('Retrieved links data:', allLinks)
 
