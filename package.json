@@ -32,14 +32,14 @@
     "@libsql/client": "^0.15.10",
     "@noble/hashes": "^1.8.0",
     "drizzle-orm": "^0.44.3",
-    "hono": "^4.8.5",
+    "hono": "^4.8.9",
     "jose": "^6.0.12",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^5.0.0",
-    "zod": "^4.0.8"
+    "zod": "^4.0.10"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250724.0",
+    "@cloudflare/workers-types": "^4.20250726.0",
     "@types/node": "^22",
     "drizzle-kit": "^0.31.4",
     "wrangler": "^4.26.0"
