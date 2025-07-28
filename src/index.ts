@@ -7,6 +7,7 @@ import { requestId } from 'hono/request-id'
 import { jwtMiddleware } from '@/middleware/jwt'
 import { apiRoutes } from '@/routes/api'
 import { shortCodeRoutes } from '@/routes/shortcode'
+import { cleanupExpiredLinks } from '@/cron/cleanup'
 import type { CloudflareEnv, Variables } from '@/types'
 import './global'
 
@@ -93,4 +94,45 @@ app.notFound((c) => {
 
 logger.info('Hono application initialization completed')
 
-export default app
+// Cloudflare Workers scheduled event handler
+export default {
+  fetch: app.fetch,
+
+  async scheduled(event: ScheduledEvent, env: CloudflareEnv, ctx: ExecutionContext): Promise<void> {
+    logger.info('Scheduled event triggered', {
+      scheduledTime: event.scheduledTime,
+      cron: event.cron
+    })
+
+    try {
+      // Wait for cleanup task to complete
+      ctx.waitUntil(
+        (async () => {
+          const result = await cleanupExpiredLinks(env)
+
+          logger.info('Scheduled cleanup task completed', {
+            deletedCount: result.deletedCount,
+            cacheCleanedCount: result.cacheCleanedCount,
+            errorCount: result.errors.length,
+            executionTimeMs: result.executionTime,
+            scheduledTime: event.scheduledTime
+          })
+
+          // Log errors if any
+          if (result.errors.length > 0) {
+            logger.error('Cleanup task had errors', {
+              errors: result.errors.slice(0, 10), // Log first 10 errors
+              totalErrors: result.errors.length
+            })
+          }
+        })()
+      )
+    } catch (error) {
+      logger.error('Scheduled event handler failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        scheduledTime: event.scheduledTime,
+        cron: event.cron
+      })
+    }
+  }
+}

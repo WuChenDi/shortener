@@ -17,10 +17,11 @@ A URL shortener service built with Cloudflare Workers and Hono.
 - 📝 **Comprehensive Logging**: Detailed request and operation logs.
 - ⚡ **KV Caching**: Cloudflare KV-based caching for high-performance URL resolution.
 - 🔀 **Optimized Hash Generation**: Base62 + timestamp algorithm for collision reduction.
+- 🕐 **Automated Cleanup**: Daily scheduled task to clean up expired links.
 
 ## 🏗️ Tech Stack
 
-- **Framework**: [Hono](https://hono.dev/) - Fast, multi-runtime web framework.
+- **Framework**: [Hono](https://hone.dev/) - Fast, multi-runtime web framework.
 - **Runtime**: Cloudflare Workers / Node.js.
 - **Database**: Cloudflare D1 / LibSQL (Turso).
 - **Cache**: Cloudflare KV - Edge key-value storage.
@@ -29,6 +30,7 @@ A URL shortener service built with Cloudflare Workers and Hono.
 - **Package Manager**: pnpm - Fast, disk-efficient.
 - **Type Checking**: TypeScript - Static type safety.
 - **Deployment**: Cloudflare Workers - Edge computing platform.
+- **Scheduled Tasks**: Cloudflare Cron Triggers - Automated maintenance.
 
 ## 🏛️ Architecture
 
@@ -44,30 +46,34 @@ graph TB
     subgraph CDN/Edge Layer
         D[Cloudflare Workers]
         E[Cloudflare KV Cache]
+        F[Cron Triggers]
     end
     subgraph Application Layer
-        F[Hono Framework]
-        G[Middleware Stack]
-        H[Route Handlers]
-        I[Cache Service]
+        G[Hono Framework]
+        H[Middleware Stack]
+        I[Route Handlers]
+        J[Cache Service]
+        K[Cleanup Service]
     end
     subgraph Database Layer
-        J[Drizzle ORM]
-        K[Cloudflare D1]
-        L[LibSQL/Turso]
+        L[Drizzle ORM]
+        M[Cloudflare D1]
+        N[LibSQL/Turso]
     end
     A --> D
     B --> D
     C --> D
     D --> E
-    D --> F
-    F --> G
+    D --> G
+    F --> K
     G --> H
     H --> I
-    I --> E
-    H --> J
-    J --> K
-    J --> L
+    I --> J
+    J --> E
+    I --> L
+    K --> L
+    L --> M
+    L --> N
 ```
 
 ### Caching Strategy
@@ -88,6 +94,23 @@ The service implements a multi-layer caching strategy:
    - Write: Database → Cache
    - Update: Database → Cache invalidation
    - Delete: Database → Cache invalidation
+
+### Scheduled Tasks
+
+The service includes automated maintenance through Cloudflare Cron Triggers:
+
+1. **Daily Cleanup Task**: Runs every day at midnight (00:00 UTC)
+   - Identifies expired links automatically
+   - Performs soft deletion to maintain data integrity
+   - Clears associated KV cache entries
+   - Processes links in batches to prevent system overload
+
+2. **Cleanup Process**:
+   - Query expired links: `WHERE isDeleted = 0 AND expiresAt < current_time`
+   - Batch processing: 50 links per batch with 100ms delays
+   - Soft delete: Updates `isDeleted = 1` and `updatedAt = now()`
+   - Cache cleanup: Removes both `url:{hash}` and `og:{hash}` entries
+   - Error handling: Individual failures don't stop the entire process
 
 ## 📦 Installation
 
@@ -178,12 +201,25 @@ JWT_PUBKEY=your-jwt-public-key
       "id": "your-kv-namespace-id-here"
     }
   ],
+  "triggers": {
+    "crons": [
+      "0 0 * * *"
+    ]
+  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
   }
 }
 ```
+
+**Cron Schedule Configuration:**
+- `"0 0 * * *"`: Daily at midnight (00:00 UTC)
+- Format: `minute hour day month dayOfWeek`
+- Alternative schedules:
+  - `"0 2 * * *"`: Daily at 2:00 AM
+  - `"0 0 */7 * *"`: Weekly at midnight
+  - `"0 0 1 * *"`: Monthly on the 1st
 
 **Generate JWT_PUBKEY:**
 1. Run `pnpm run generate-jwt` to create key pair.
@@ -483,6 +519,14 @@ Serves HTML with OG tags for social media crawlers.
 - `toBase62()`: Converts numbers to Base62 encoding.
 - `generateHashFromDomainAndCode()`: Creates domain-specific hashes.
 
+### Cleanup Service (`cron/cleanup.ts`)
+
+- `cleanupExpiredLinks()`: Automated expired link cleanup function.
+- **Batch Processing**: Handles large datasets efficiently (50 links per batch).
+- **Error Resilience**: Individual failures don't stop the entire cleanup process.
+- **Comprehensive Logging**: Detailed execution statistics and error reporting.
+- **Cache Synchronization**: Automatically clears related KV cache entries.
+
 ## ⚡ Performance Optimizations
 
 ### Caching Strategy
@@ -499,6 +543,63 @@ Serves HTML with OG tags for social media crawlers.
 3. **Time-based Ordering**: Improves cache locality and database performance
 4. **Configurable Length**: Default 8 characters with dynamic extension on conflicts
 
+### Automated Maintenance
+
+1. **Scheduled Cleanup**: Daily automated cleanup prevents database bloat
+2. **Resource Efficiency**: Batch processing with delays prevents system overload
+3. **Monitoring Ready**: Comprehensive logging for maintenance tracking
+4. **Cache Coherence**: Synchronized cache invalidation during cleanup
+
+## 📊 Monitoring & Maintenance
+
+### Scheduled Task Monitoring
+
+After deployment, you can monitor the cleanup task execution in Cloudflare Workers logs:
+
+```bash
+# View recent logs
+wrangler tail
+
+# Filter for cleanup task logs
+wrangler tail --grep "cleanup"
+```
+
+**Expected Log Output:**
+```json
+{
+  "message": "Scheduled cleanup task completed",
+  "deletedCount": 42,
+  "cacheCleanedCount": 42,
+  "errorCount": 0,
+  "executionTimeMs": 1250,
+  "scheduledTime": "2025-07-25T00:00:00.000Z"
+}
+```
+
+### Performance Metrics
+
+The cleanup task provides detailed metrics:
+- **Execution Time**: Total time spent on cleanup
+- **Deleted Count**: Number of links soft-deleted
+- **Cache Cleaned Count**: Number of cache entries removed
+- **Error Count**: Number of failures (with detailed error messages)
+- **Batch Processing**: Efficient handling of large datasets
+
+### Customizing Cleanup Schedule
+
+To modify the cleanup frequency, update the cron expression in `wrangler.jsonc`:
+
+```json
+"triggers": {
+  "crons": [
+    "0 0 * * *"    // Daily at midnight
+    // "0 */12 * * *"  // Every 12 hours
+    // "0 0 * * 0"     // Weekly on Sunday
+    // "0 0 1 * *"     // Monthly on 1st day
+  ]
+}
+```
+
 ## 📈 Deployment
 
 ### Cloudflare Workers
@@ -510,6 +611,12 @@ pnpm run deploy
 # Preview deployment
 pnpm run preview
 ```
+
+**Post-Deployment Checklist:**
+- ✅ Verify scheduled task is active in Cloudflare Dashboard
+- ✅ Check initial cleanup execution in logs
+- ✅ Monitor cleanup task performance metrics
+- ✅ Validate cache synchronization after cleanup
 
 ## 📜 License
 
