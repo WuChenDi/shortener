@@ -42,6 +42,11 @@
   // "ai": {
   //   "binding": "AI"
   // },
+  "triggers": {
+    "crons": [
+      "0 0 * * *"
+    ]
+  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
