@@ -21,7 +21,7 @@ A URL shortener service built with Cloudflare Workers and Hono.
 
 ## 🏗️ Tech Stack
 
-- **Framework**: [Hono](https://hone.dev/) - Fast, multi-runtime web framework.
+- **Framework**: [Hono](https://hono.dev/) - Fast, multi-runtime web framework.
 - **Runtime**: Cloudflare Workers / Node.js.
 - **Database**: Cloudflare D1 / LibSQL (Turso).
 - **Cache**: Cloudflare KV - Edge key-value storage.
