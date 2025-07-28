@@ -7,9 +7,17 @@
     "nodejs_compat"
   ],
   "vars": {
-    "DB_TYPE": "d1",
-    "JWT_PUBKEY": "0411cdf71ab04e68498e5a012a0bf632fbf18bd4ffbff458dcf6f5a7200a1ecf5d3a6fb73317a4206e9c0d20e4099818da525be873a6e34f06438974d9607d9bcb",
-    "CDN_URL": "https://your-cdn-url.com/"
+    // The Service runtime preset to use for deployment.
+    "DEPLOY_RUNTIME": "cf",
+    // Database Type
+    "DB_TYPE": "libsql",
+    // LibSQL Configuration
+    // The URL for connecting to the LibSQL database. Default is a local SQLite file.
+    "LIBSQL_URL": "libsql://your-libsql-database-url",
+    // The authentication token for accessing the LibSQL
+    "LIBSQL_AUTH_TOKEN": "your-libsql-auth-token",
+    // The public key for JWT verification
+    "JWT_PUBKEY": "your-jwt-public-key",
   },
   "d1_databases": [
     {

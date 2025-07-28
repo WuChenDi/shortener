@@ -1,7 +1,16 @@
 export interface CloudflareEnv {
   SHORTENER_KV: KVNamespace
+  // The Service runtime preset to use for deployment.
+  DEPLOY_RUNTIME: 'cf' | 'node'
+  // Database Type
+  DB_TYPE: 'libsql' | 'd1'
+  // LibSQL Configuration
+  // The URL for connecting to the LibSQL database. Default is a local SQLite file.
+  LIBSQL_URL: string
+  // The authentication token for accessing the LibSQL
+  LIBSQL_AUTH_TOKEN: string
+  // The public key for JWT verification
   JWT_PUBKEY: string
-  CDN_URL: string
 }
 
 export interface Variables {

@@ -51,7 +51,7 @@ export const deleteUrlRequestSchema = z.object({
   hashList: z.array(
     z.string()
       .min(1, 'Hash cannot be empty')
-      .max(50, 'Hash must be less than 50 characters')
+      .max(100, 'Hash must be less than 100 characters')
   )
     .min(1, 'At least one hash is required for deletion')
     .max(100, 'Cannot delete more than 100 records at once'),

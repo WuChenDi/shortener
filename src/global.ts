@@ -17,7 +17,7 @@ declare global {
 
 // logger
 const logger =
-  process.env.DB_TYPE === 'd1'
+  process.env.DEPLOY_RUNTIME === 'cf'
     ? {
         debug: (message: string, ...args: any[]) => {
           if (isDebug) console.log(`[DEBUG] ${message}`, ...args)
