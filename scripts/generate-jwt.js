@@ -20,10 +20,10 @@ async function generateKeyPair() {
 
     // Generate test JWT
     const payload = {
-      sub: 'test-user-123',
+      sub: 'shortener-admin-wudi',
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24), // Expires in 24 hours
-      userId: 'test-user-123',
+      userId: 'wudi',
       role: 'admin',
       permissions: ['read', 'write', 'delete']
     }
