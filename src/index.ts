@@ -5,8 +5,7 @@ import { prettyJSON } from 'hono/pretty-json'
 import { HTTPException } from 'hono/http-exception'
 import { requestId } from 'hono/request-id'
 import { jwtMiddleware } from '@/middleware/jwt'
-import { apiRoutes } from '@/routes/api'
-import { shortCodeRoutes } from '@/routes/shortcode'
+import { shortCodeRoutes, apiRoutes, aiRoutes } from '@/routes'
 import { cleanupExpiredLinks } from '@/cron/cleanup'
 import type { CloudflareEnv, Variables } from '@/types'
 import './global'
@@ -27,8 +26,9 @@ app.use('*', cors())
 app.use('/api/*', jwtMiddleware)
 
 // Routes
-app.route('/api', apiRoutes)
 app.route('/', shortCodeRoutes)
+app.route('/api', apiRoutes)
+app.route('/api/ai', aiRoutes)
 
 // Global error handler
 app.onError((err, c) => {
@@ -98,10 +98,14 @@ logger.info('Hono application initialization completed')
 export default {
   fetch: app.fetch,
 
-  async scheduled(event: ScheduledEvent, env: CloudflareEnv, ctx: ExecutionContext): Promise<void> {
+  async scheduled(
+    event: ScheduledEvent,
+    env: CloudflareEnv,
+    ctx: ExecutionContext
+  ): Promise<void> {
     logger.info('Scheduled event triggered', {
       scheduledTime: event.scheduledTime,
-      cron: event.cron
+      cron: event.cron,
     })
 
     try {
@@ -115,14 +119,14 @@ export default {
             cacheCleanedCount: result.cacheCleanedCount,
             errorCount: result.errors.length,
             executionTimeMs: result.executionTime,
-            scheduledTime: event.scheduledTime
+            scheduledTime: event.scheduledTime,
           })
 
           // Log errors if any
           if (result.errors.length > 0) {
             logger.error('Cleanup task had errors', {
               errors: result.errors.slice(0, 10), // Log first 10 errors
-              totalErrors: result.errors.length
+              totalErrors: result.errors.length,
             })
           }
         })()
@@ -131,8 +135,8 @@ export default {
       logger.error('Scheduled event handler failed', {
         error: error instanceof Error ? error.message : 'Unknown error',
         scheduledTime: event.scheduledTime,
-        cron: event.cron
+        cron: event.cron,
       })
     }
-  }
+  },
 }

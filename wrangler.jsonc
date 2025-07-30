@@ -18,6 +18,17 @@
     "LIBSQL_AUTH_TOKEN": "your-libsql-auth-token",
     // The public key for JWT verification
     "JWT_PUBKEY": "your-jwt-public-key",
+
+    // AI Functional Configuration
+    "AI_MODEL": "@cf/meta/llama-3.1-8b-instruct",
+    "ENABLE_AI_SLUG": "true",
+    "AI_ENABLE_CACHE": "true",
+    "AI_MAX_RETRIES": "3",
+    "AI_TIMEOUT": "10000",
+
+    // Analytics Engine Configuration
+    "ANALYTICS_SAMPLE_RATE": "1.0",
+    "DISABLE_BOT_ANALYTICS": "false"
   },
   "d1_databases": [
     {
@@ -39,9 +50,15 @@
   //     "bucket_name": "my-bucket"
   //   }
   // ],
-  // "ai": {
-  //   "binding": "AI"
-  // },
+  "ai": {
+    "binding": "AI"
+  },
+  "analytics_engine_datasets": [
+    {
+      "binding": "ANALYTICS",
+      "dataset": "shortener_analytics"
+    }
+  ],
   "triggers": {
     "crons": [
       "0 0 * * *"
