@@ -29,7 +29,7 @@ apiRoutes.post('/page', async (c) => {
     const db = useDrizzle(c)
     logger.debug('Database connection established for page creation')
 
-    return c.json<ApiResponse>({
+    return c.json<ApiResponse<{ db: boolean }>>({
       code: 0,
       message: 'ok',
       data: {
@@ -38,7 +38,14 @@ apiRoutes.post('/page', async (c) => {
     })
   } catch (error) {
     logger.error('Error in POST /api/page', error)
-    throw error
+    
+    return c.json<ApiResponse>(
+      {
+        code: 500,
+        message: error instanceof Error ? error.message : 'Internal Server Error',
+      },
+      500
+    )
   }
 })
 
@@ -64,7 +71,7 @@ apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
     logger.info(`Retrieved ${allLinks?.length || 0} links from database`)
     logger.debug('Retrieved links data:', allLinks)
 
-    return c.json<ApiResponse>({
+    return c.json<ApiResponse<typeof allLinks>>({
       code: 0,
       message: 'ok',
       data: allLinks || [],
@@ -73,7 +80,7 @@ apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
     logger.error('Error retrieving URLs from database', error)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
-    return c.json(
+    return c.json<ApiResponse<[]>>(
       {
         code: 500,
         message: errorMessage,
@@ -238,11 +245,10 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
     logger.error('Error in URL creation process', error)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
-    return c.json(
+    return c.json<ApiResponse>(
       {
         code: 500,
         message: errorMessage,
-        data: null,
       },
       500
     )
@@ -356,11 +362,10 @@ apiRoutes.put('/url', zValidator('json', updateUrlRequestSchema), async (c) => {
     logger.error('Error in URL update process', error)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
-    return c.json(
+    return c.json<ApiResponse>(
       {
         code: 500,
         message: errorMessage,
-        data: null,
       },
       500
     )
@@ -456,11 +461,10 @@ apiRoutes.delete('/url', zValidator('json', deleteUrlRequestSchema), async (c) =
     logger.error('Error in URL deletion process', error)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
-    return c.json(
+    return c.json<ApiResponse>(
       {
         code: 500,
         message: errorMessage,
-        data: null,
       },
       500
     )

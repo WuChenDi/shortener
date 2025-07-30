@@ -3,7 +3,13 @@ import { links } from '@/database/schema'
 import { eq } from 'drizzle-orm'
 import { useDrizzle, withNotDeleted } from '@/lib'
 import { generateHashFromDomainAndCode, generateOgPageHtml } from '@/utils'
-import type { CloudflareEnv, Variables, ServiceHealthResponse, UrlData } from '@/types'
+import type {
+  CloudflareEnv,
+  Variables,
+  ApiResponse,
+  ServiceHealthResponse,
+  UrlData,
+} from '@/types'
 import pkg from '@/../package.json'
 
 export const shortCodeRoutes = new Hono<{
@@ -29,31 +35,39 @@ shortCodeRoutes.get('/', async (c) => {
       logger.warn('Database connectivity test failed', dbError)
     }
 
-    const serviceInfo: ServiceHealthResponse = {
-      service: pkg.name,
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      version: pkg.version
-    }
-
     logger.info('Service health check completed', {
-      status: serviceInfo.status,
+      status: 'healthy',
       dbStatus: dbStatus
     })
 
-    return c.json(serviceInfo)
+    return c.json<ApiResponse<ServiceHealthResponse>>({
+      code: 0,
+      message: 'ok',
+      data: {
+        service: pkg.name,
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        version: pkg.version,
+        database: dbStatus
+      }
+    })
   } catch (error) {
     logger.error('Error during health check', error)
 
-    const errorResponse: ServiceHealthResponse = {
-      service: pkg.name,
-      status: 'unhealthy',
-      timestamp: new Date().toISOString(),
-      version: pkg.version,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    }
-
-    return c.json(errorResponse, 500)
+    return c.json<ApiResponse<ServiceHealthResponse>>(
+      {
+        code: 500,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        data: {
+          service: pkg.name,
+          status: 'unhealthy',
+          timestamp: new Date().toISOString(),
+          version: pkg.version,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        }
+      },
+      500
+    )
   }
 })
 
@@ -123,10 +137,10 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
 
     if (!urlData) {
       logger.warn(`Shortcode not found: ${shortCode} (hash: ${hash})`)
-      return c.json(
+      return c.json<ApiResponse>(
         {
           code: 404,
-          message: 'Short code not found or expired',
+          message: 'Short code not found or expired'
         },
         404
       )
@@ -150,7 +164,7 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
         }
       }
       
-      return c.json(
+      return c.json<ApiResponse>(
         {
           code: 404,
           message: 'Short code not found or expired',
@@ -174,7 +188,7 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
     logger.error(`Error processing shortcode ${shortCode}`, error)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
-    return c.json(
+    return c.json<ApiResponse>(
       {
         code: 500,
         message: errorMessage,
@@ -193,7 +207,7 @@ shortCodeRoutes.get('/:shortCode/og', async (c) => {
   try {
     if (!shortCode || shortCode.trim() === '') {
       logger.warn('OG page requested without valid shortcode')
-      return c.json(
+      return c.json<ApiResponse>(
         {
           code: 400,
           message: 'Short code not provided or invalid',
@@ -234,7 +248,7 @@ shortCodeRoutes.get('/:shortCode/og', async (c) => {
 
     if (!urlData) {
       logger.warn(`OG page - shortcode not found: ${shortCode}`)
-      return c.json(
+      return c.json<ApiResponse>(
         {
           code: 404,
           message: 'Short code not found',
@@ -248,7 +262,7 @@ shortCodeRoutes.get('/:shortCode/og', async (c) => {
         expiresAt: urlData.expiresAt,
         currentTime: Date.now(),
       })
-      return c.json(
+      return c.json<ApiResponse>(
         {
           code: 404,
           message: 'Short code expired',
@@ -279,7 +293,7 @@ shortCodeRoutes.get('/:shortCode/og', async (c) => {
     logger.error(`Error processing OG page for shortcode ${shortCode}`, error)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
-    return c.json(
+    return c.json<ApiResponse>(
       {
         code: 500,
         message: errorMessage,
