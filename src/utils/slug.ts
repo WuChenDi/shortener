@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { AIConfiguration, AISlugResponse, CloudflareEnv } from '@/types'
 
-const SLUG_REGEX = /^[a-zA-Z0-9_-]{1,20}$/
+const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/i
 
 /**
  * Get AI configuration from environment variables with fallback defaults
