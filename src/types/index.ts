@@ -113,25 +113,11 @@ export interface UrlData {
   isDeleted: number
 }
 
+// ==================== AI Related Type Definitions ====================
+
 export interface AIMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
-}
-
-export interface AIConfig {
-  // Model configuration
-  model: keyof AiModels
-  systemPrompt: string
-  examples: AIMessage[]
-
-  // Performance configuration
-  maxRetries: number
-  timeout: number
-  cacheExpiration: number // Cache expiration time (seconds)
-
-  // Generation rules
-  maxSlugLength: number
-  slugPattern: RegExp
 }
 
 // AI Slug generation response
@@ -143,40 +129,33 @@ export interface AISlugResponse {
   cachedAt?: number // Cache timestamp
 }
 
-// AI batch processing result
+// AI configuration object returned by getAIConfig
+export interface AIConfiguration {
+  systemPrompt: string
+  examples: AIMessage[]
+  ENABLE_AI_SLUG: boolean
+  AI_MODEL: keyof AiModels
+  AI_ENABLE_CACHE: boolean
+  AI_MAX_RETRIES: number
+  AI_TIMEOUT: number
+}
+
+// AI generation options
+export interface AIOptions {
+  cache?: boolean
+}
+
+// Batch processing types (if needed in the future)
 export interface AIBatchResult {
   url: string
   result: AISlugResponse | null
   error: string | null
 }
 
-// AI batch processing response
-export interface AIBatchResponse {
-  results: AIBatchResult[]
-  summary: {
-    total: number
-    success: number
-    failed: number
-  }
-}
-
-// AI suggestions response
-export interface AISuggestionsResponse {
-  url: string
-  suggestions: AISlugResponse[]
-}
-
-// AI call options
-export interface AIGenerateOptions {
-  cache?: boolean
-  fallback?: boolean
-  maxRetries?: number
-  timeout?: number
-}
-
-// AI cache data structure
-export interface AICacheData extends AISlugResponse {
-  cachedAt: number
+export interface AIBatchSummary {
+  total: number
+  success: number
+  failed: number
 }
 
 // ==================== Analytics Related Type Definitions ====================

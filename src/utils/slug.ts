@@ -1,128 +1,94 @@
 import type { Context } from 'hono'
-import type { AIConfig, AIMessage, AISlugResponse, CloudflareEnv } from '@/types'
+import type { AIConfiguration, AISlugResponse, CloudflareEnv } from '@/types'
 
-export const SLUG_REGEX = /^[a-zA-Z0-9_-]{1,20}$/
+const SLUG_REGEX = /^[a-zA-Z0-9_-]{1,20}$/
 
-export const AI_CONFIG: AIConfig = {
-  model: '@cf/meta/llama-2-7b-chat-int8',
+/**
+ * Get AI configuration from environment variables with fallback defaults
+ * @param env CloudflareEnv environment variables
+ * @returns AI configuration object
+ */
+export function getAIConfig(env: CloudflareEnv): AIConfiguration {
+  // Check if AI is enabled: both flag must be true AND model must be configured
+  const aiEnabled = env.ENABLE_AI_SLUG === 'true' && Boolean(env.AI_MODEL?.trim())
 
-  systemPrompt: `You are a URL-to-slug converter specialist. Generate short, meaningful slugs for URLs.
+  return {
+    systemPrompt: `You are a URL-to-slug converter specialist. Generate short, meaningful slugs for URLs.
 
-RULES:
-1. Use only lowercase letters, numbers, and hyphens
-2. Maximum 20 characters, minimum 3 characters
-3. No leading/trailing hyphens
-4. Be descriptive but concise
-5. Remove common words (the, and, or, of, in, on, at, etc.)
-6. Use hyphens to separate words
-7. Return ONLY JSON format: {"slug": "example"}
+  RULES:
+  1. Use only lowercase letters, numbers, and hyphens
+  2. Maximum 20 characters, minimum 3 characters
+  3. No leading/trailing hyphens
+  4. Be descriptive but concise
+  5. Remove common words (the, and, or, of, in, on, at, etc.)
+  6. Use hyphens to separate words
+  7. Return ONLY JSON format: {"slug": "example"}
 
-EXAMPLES:
-- GitHub repos: use repo name
-- Documentation: use service name + "docs"  
-- Blog posts: use key topic words
-- Company sites: use company name
-- API docs: use service + "api"
+  EXAMPLES:
+  - GitHub repos: use repo name
+  - Documentation: use service name + "docs"  
+  - Blog posts: use key topic words
+  - Company sites: use company name
+  - API docs: use service + "api"
 
-SLUG PATTERN: ${SLUG_REGEX.toString()}`,
+  SLUG PATTERN: ${SLUG_REGEX.toString()}`,
 
-  examples: [
-    { role: 'user', content: 'https://www.cloudflare.com/' },
-    { role: 'assistant', content: '{"slug": "cloudflare"}' },
+    examples: [
+      { role: 'user', content: 'https://www.cloudflare.com/' },
+      { role: 'assistant', content: '{"slug": "cloudflare"}' },
 
-    { role: 'user', content: 'https://github.com/vercel/next.js' },
-    { role: 'assistant', content: '{"slug": "nextjs"}' },
+      { role: 'user', content: 'https://github.com/vercel/next.js' },
+      { role: 'assistant', content: '{"slug": "nextjs"}' },
 
-    { role: 'user', content: 'https://github.com/WuChenDi' },
-    { role: 'assistant', content: '{"slug": "WuChenDi"}' },
+      { role: 'user', content: 'https://github.com/WuChenDi' },
+      { role: 'assistant', content: '{"slug": "WuChenDi"}' },
 
-    { role: 'user', content: 'https://github.com/cdLab996' },
-    { role: 'assistant', content: '{"slug": "cdlab996"}' },
+      { role: 'user', content: 'https://github.com/cdLab996' },
+      { role: 'assistant', content: '{"slug": "cdlab996"}' },
 
-    {
-      role: 'user',
-      content: 'https://notes-wudi.pages.dev',
-    },
-    { role: 'assistant', content: '{"slug": "notes-wudi"}' },
+      {
+        role: 'user',
+        content: 'https://notes-wudi.pages.dev',
+      },
+      { role: 'assistant', content: '{"slug": "notes-wudi"}' },
 
-    { role: 'user', content: 'https://clearify.pages.dev' },
-    { role: 'assistant', content: '{"slug": "clearify"}' },
+      { role: 'user', content: 'https://clearify.pages.dev' },
+      { role: 'assistant', content: '{"slug": "clearify"}' },
 
-    { role: 'user', content: 'https://t.me/cdlab996' },
-    { role: 'assistant', content: '{"slug": "tg-cdlab996"}' },
+      { role: 'user', content: 'https://t.me/cdlab996' },
+      { role: 'assistant', content: '{"slug": "tg-cdlab996"}' },
 
-    { role: 'user', content: 'https://shortener.cdlab.workers.dev' },
-    { role: 'assistant', content: '{"slug": "shortener"}' },
-  ],
+      { role: 'user', content: 'https://shortener.cdlab.workers.dev' },
+      { role: 'assistant', content: '{"slug": "shortener"}' },
+    ],
 
-  // Performance configuration
-  maxRetries: 3,
-  timeout: 10000, // 10 seconds
-  cacheExpiration: 86400 * 7, // 7 days
-
-  // Generation rules
-  maxSlugLength: 20,
-  slugPattern: SLUG_REGEX,
-}
-
-export async function generateAISlug(
-  c: Context,
-  url: string,
-  options: { cache?: boolean } = {}
-): Promise<AISlugResponse> {
-  const { cache = true } = options
-
-  // Check cache first
-  if (cache && c.env.SHORTENER_KV) {
-    const cached = await getCachedSlug(c.env.SHORTENER_KV, url)
-    if (cached) {
-      logger.debug('[AI] Cache hit', { url, slug: cached.slug })
-      return cached
-    }
-  }
-
-  // Try AI generation
-  try {
-    const result = await callAI(c.env.AI, url, c.env)
-
-    // Cache the result
-    if (cache && result.success && c.env.SHORTENER_KV) {
-      await setCachedSlug(c.env.SHORTENER_KV, url, result)
-    }
-
-    return result
-  } catch (error) {
-    logger.warn('[AI] AI generation failed', { url, error: (error as Error).message })
-
-    throw error
+    // AI configuration with inline enable check
+    ENABLE_AI_SLUG: aiEnabled,
+    AI_MODEL: env.AI_MODEL || '@cf/meta/llama-3.1-8b-instruct',
+    AI_ENABLE_CACHE: env.AI_ENABLE_CACHE !== 'false',
+    AI_MAX_RETRIES: Number.parseInt(env.AI_MAX_RETRIES || '3'),
+    AI_TIMEOUT: Number.parseInt(env.AI_TIMEOUT || '10000'),
   }
 }
 
 /**
  * Call AI service to generate slug
  */
-export async function callAI(
-  ai: Ai,
-  url: string,
-  env: CloudflareEnv
-): Promise<AISlugResponse> {
-  const messages: AIMessage[] = [
-    { role: 'system', content: AI_CONFIG.systemPrompt },
-    ...AI_CONFIG.examples,
-    { role: 'user', content: url },
-  ]
-
-  const timeout = env.AI_TIMEOUT ? Number.parseInt(env.AI_TIMEOUT) : AI_CONFIG.timeout
-  const model = (env.AI_MODEL || AI_CONFIG.model) as keyof AiModels
+async function callAI(env: CloudflareEnv, url: string): Promise<AISlugResponse> {
+  const aiConfig = getAIConfig(env)
 
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeout)
+  const timeoutId = setTimeout(() => controller.abort(), aiConfig.AI_TIMEOUT)
 
   try {
-    logger.debug('[AI] Calling AI service', { model, url })
+    logger.debug('[AI] Calling AI service', { model: aiConfig.AI_MODEL, url })
 
-    const response = await ai.run(model, {
-      messages,
+    const response = await env.AI.run(aiConfig.AI_MODEL, {
+      messages: [
+        { role: 'system', content: aiConfig.systemPrompt },
+        ...aiConfig.examples,
+        { role: 'user', content: url },
+      ],
       stream: false,
       max_tokens: 100,
     })
@@ -149,7 +115,7 @@ export async function callAI(
     }
 
     logger.info('[AI] AI response received', {
-      model,
+      model: aiConfig.AI_MODEL,
       url,
       responseLength: responseText.length,
       responsePreview: responseText.substring(0, 100),
@@ -169,14 +135,48 @@ export async function callAI(
     clearTimeout(timeoutId)
 
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`AI request timeout after ${timeout}ms`)
+      throw new Error(`AI request timeout after ${aiConfig.AI_TIMEOUT}ms`)
     }
 
     logger.error('[AI] AI service call failed', {
-      model,
+      model: aiConfig.AI_MODEL,
       url,
       error: error instanceof Error ? error.message : 'Unknown error',
     })
+
+    throw error
+  }
+}
+
+export async function generateAISlug(
+  c: Context,
+  url: string,
+  options: { cache?: boolean } = {}
+): Promise<AISlugResponse> {
+  const aiConfig = getAIConfig(c.env)
+  const { cache = aiConfig.AI_ENABLE_CACHE } = options
+
+  // Check cache first
+  if (cache && c.env.SHORTENER_KV) {
+    const cached = await getCachedSlug(c.env.SHORTENER_KV, url)
+    if (cached) {
+      logger.debug('[AI] Cache hit', { url, slug: cached.slug })
+      return cached
+    }
+  }
+
+  // Try AI generation
+  try {
+    const result = await callAI(c.env, url)
+
+    // Cache the result
+    if (cache && result.success && c.env.SHORTENER_KV) {
+      await setCachedSlug(c.env.SHORTENER_KV, url, result)
+    }
+
+    return result
+  } catch (error) {
+    logger.warn('[AI] AI generation failed', { url, error: (error as Error).message })
 
     throw error
   }
@@ -316,18 +316,4 @@ export function hashUrl(url: string): string {
 export function isCacheValid(cached: any): boolean {
   const maxAge = 86400 * 7 * 1000 // 7 days (ms)
   return cached.cachedAt && Date.now() - cached.cachedAt < maxAge
-}
-
-export function isAIEnabled(env: CloudflareEnv) {
-  if (!env.AI) {
-    logger.warn('AI binding not found, AI features disabled')
-    return false
-  }
-
-  if (env.ENABLE_AI_SLUG === 'false') {
-    logger.info('AI Slug generation disabled by configuration')
-    return false
-  }
-
-  return true
 }

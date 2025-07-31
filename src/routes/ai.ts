@@ -3,11 +3,17 @@ import { zValidator } from '@hono/zod-validator'
 import {
   batchSlugSchema,
   generateAISlug,
-  isAIEnabled,
+  getAIConfig,
   slugSchema,
   suggestionsSchema,
 } from '@/utils'
-import type { CloudflareEnv, Variables, ApiResponse, AISlugResponse } from '@/types'
+import type {
+  CloudflareEnv,
+  Variables,
+  ApiResponse,
+  AISlugResponse,
+  AIBatchResult,
+} from '@/types'
 
 export const aiRoutes = new Hono<{ Bindings: CloudflareEnv; Variables: Variables }>()
 
@@ -15,22 +21,30 @@ export const aiRoutes = new Hono<{ Bindings: CloudflareEnv; Variables: Variables
 aiRoutes.get('/slug', zValidator('query', slugSchema), async (c) => {
   const { url, cache } = c.req.valid('query')
   const requestId = c.get('requestId')
+  const aiConfig = getAIConfig(c.env)
 
   logger.info(`[${requestId}] AI slug generation requested`, { url })
 
-  // Check if AI is enabled
-  if (!isAIEnabled(c.env)) {
+  // Check if AI is enabled using environment variables
+  if (!aiConfig.ENABLE_AI_SLUG) {
+    logger.warn(`[${requestId}] AI service disabled`, {
+      ENABLE_AI_SLUG: aiConfig.ENABLE_AI_SLUG,
+      AI_MODEL: aiConfig.AI_MODEL,
+    })
+
     return c.json<ApiResponse>(
       {
         code: 503,
-        message: 'AI service is not available',
+        message: 'AI service is not available or disabled',
       },
       503
     )
   }
 
   try {
-    const result = await generateAISlug(c, url, { cache })
+    const result = await generateAISlug(c, url, {
+      cache,
+    })
 
     logger.info(`[${requestId}] AI slug generated`, {
       url,
@@ -52,7 +66,6 @@ aiRoutes.get('/slug', zValidator('query', slugSchema), async (c) => {
       {
         code: 500,
         message: 'AI slug generation failed',
-        data: null,
       },
       500
     )
@@ -63,17 +76,22 @@ aiRoutes.get('/slug', zValidator('query', slugSchema), async (c) => {
 aiRoutes.post('/batch-slug', zValidator('json', batchSlugSchema), async (c) => {
   const { urls, cache } = c.req.valid('json')
   const requestId = c.get('requestId')
-  const timeout = urls.length * 3000
+  const aiConfig = getAIConfig(c.env)
+
+  const timeout = urls.length * aiConfig.AI_TIMEOUT
 
   logger.info(`[${requestId}] Batch AI slug generation requested`, {
     urlCount: urls.length,
+    timeout,
   })
 
-  if (!isAIEnabled(c.env)) {
+  if (!aiConfig.ENABLE_AI_SLUG) {
+    logger.warn(`[${requestId}] AI service disabled for batch operation`)
+
     return c.json<ApiResponse>(
       {
         code: 503,
-        message: 'AI service is not available',
+        message: 'AI service is not available or disabled',
       },
       503
     )
@@ -82,13 +100,18 @@ aiRoutes.post('/batch-slug', zValidator('json', batchSlugSchema), async (c) => {
   try {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), timeout)
+
     const results = await Promise.allSettled(
-      urls.map((url) => generateAISlug(c, url, { cache }))
+      urls.map((url) =>
+        generateAISlug(c, url, {
+          cache,
+        })
+      )
     )
     clearTimeout(timeoutId)
 
-    const processedResults = results.map((result, index) => ({
-      url: urls[index],
+    const processedResults: AIBatchResult[] = results.map((result, index) => ({
+      url: urls[index]!,
       result: result.status === 'fulfilled' ? result.value : null,
       error: result.status === 'rejected' ? (result.reason as Error).message : null,
     }))
@@ -99,6 +122,7 @@ aiRoutes.post('/batch-slug', zValidator('json', batchSlugSchema), async (c) => {
       total: urls.length,
       success: successCount,
       failed: urls.length - successCount,
+      executionTime: `${timeout}ms`,
     })
 
     return c.json<ApiResponse>({
@@ -129,10 +153,13 @@ aiRoutes.post('/batch-slug', zValidator('json', batchSlugSchema), async (c) => {
 aiRoutes.get('/suggestions', zValidator('query', suggestionsSchema), async (c) => {
   const { url, count } = c.req.valid('query')
   const requestId = c.get('requestId')
+  const aiConfig = getAIConfig(c.env)
 
   logger.info(`[${requestId}] AI suggestions requested`, { url, count })
 
-  if (!isAIEnabled(c.env)) {
+  if (!aiConfig.ENABLE_AI_SLUG) {
+    logger.warn(`[${requestId}] AI service disabled for suggestions`)
+
     return c.json<ApiResponse>(
       {
         code: 503,
@@ -181,7 +208,6 @@ aiRoutes.get('/suggestions', zValidator('query', suggestionsSchema), async (c) =
       {
         code: 500,
         message: 'AI suggestions generation failed',
-        data: null,
       },
       500
     )

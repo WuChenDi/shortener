@@ -19,7 +19,8 @@ export const shortCodeRoutes = new Hono<{
 
 // GET / - Service health check and info
 shortCodeRoutes.get('/', async (c) => {
-  logger.info(`[${c.get('requestId')}] Service health check requested`)
+  const requestId = c.get('requestId')
+  logger.info(`[${requestId}] Service health check requested`)
 
   try {
     const db = useDrizzle(c)
@@ -52,7 +53,7 @@ shortCodeRoutes.get('/', async (c) => {
       }
     })
   } catch (error) {
-    logger.error('Error during health check', error)
+    logger.error(`[${requestId}] Error during health check`, error)
 
     return c.json<ApiResponse<ServiceHealthResponse>>(
       {
@@ -75,8 +76,9 @@ shortCodeRoutes.get('/', async (c) => {
 shortCodeRoutes.get('/:shortCode', async (c) => {
   const shortCode = c.req.param('shortCode')
   const userAgent = c.req.header('user-agent') || ''
+  const requestId = c.get('requestId')
 
-  logger.info(`[${c.get('requestId')}] Processing shortcode redirect request: ${shortCode}`)
+  logger.info(`[${requestId}] Processing shortcode redirect request: ${shortCode}`)
   logger.debug(`User agent: ${userAgent}`)
 
   try {
@@ -185,7 +187,7 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
 
     return c.redirect(urlData.url, 302)
   } catch (error) {
-    logger.error(`Error processing shortcode ${shortCode}`, error)
+    logger.error(`[${requestId}] Error processing shortcode ${shortCode}`, error)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
     return c.json<ApiResponse>(
@@ -201,8 +203,9 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
 // GET /:shortCode/og
 shortCodeRoutes.get('/:shortCode/og', async (c) => {
   const shortCode = c.req.param('shortCode')
+  const requestId = c.get('requestId')
 
-  logger.info(`[${c.get('requestId')}] Processing OG page request for shortcode: ${shortCode}`)
+  logger.info(`[${requestId}] Processing OG page request for shortcode: ${shortCode}`)
 
   try {
     if (!shortCode || shortCode.trim() === '') {
@@ -290,7 +293,7 @@ shortCodeRoutes.get('/:shortCode/og', async (c) => {
     logger.debug(`OG page HTML generated for shortcode: ${shortCode}`)
     return c.html(html)
   } catch (error) {
-    logger.error(`Error processing OG page for shortcode ${shortCode}`, error)
+    logger.error(`[${requestId}] Error processing OG page for shortcode ${shortCode}`, error)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
     return c.json<ApiResponse>(
