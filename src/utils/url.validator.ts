@@ -93,7 +93,11 @@ export const isDeletedQuerySchema = z.object({
 
 export const slugSchema = z.object({
   url: z.url('Invalid URL format'),
-  cache: z.boolean().optional().default(true),
+  cache: z
+    .string()
+    .transform((val) => val === 'true')
+    .optional()
+    .default(true),
 })
 
 export const batchSlugSchema = z.object({
