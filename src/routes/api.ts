@@ -23,7 +23,9 @@ export const apiRoutes = new Hono<{ Bindings: CloudflareEnv; Variables: Variable
 
 // POST /api/page
 apiRoutes.post('/page', async (c) => {
-  logger.info(`[${c.get('requestId')}] POST /api/page - Creating page`)
+  const requestId = c.get('requestId')
+
+  logger.info(`[${requestId}] POST /api/page - Creating page`)
 
   try {
     const db = useDrizzle(c)
@@ -37,8 +39,8 @@ apiRoutes.post('/page', async (c) => {
       },
     })
   } catch (error) {
-    logger.error('Error in POST /api/page', error)
-    
+    logger.error(`[${requestId}] Error in POST /api/page`, error)
+
     return c.json<ApiResponse>(
       {
         code: 500,
@@ -52,11 +54,12 @@ apiRoutes.post('/page', async (c) => {
 // GET /api/url
 apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
   const { isDeleted } = c.req.valid('query')
+  const requestId = c.get('requestId')
 
   // By default, query undeleted links (isDeleted = 0)
   const filterValue = isDeleted ?? 0
 
-  logger.info(`[${c.get('requestId')}] GET /api/url - Fetching URLs with isDeleted filter: ${filterValue}`)
+  logger.info(`[${requestId}] GET /api/url - Fetching URLs with isDeleted filter: ${filterValue}`)
 
   try {
     const db = useDrizzle(c)
@@ -77,7 +80,7 @@ apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
       data: allLinks || [],
     })
   } catch (error) {
-    logger.error('Error retrieving URLs from database', error)
+    logger.error(`[${requestId}] Error retrieving URLs from database`, error)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
     return c.json<ApiResponse<[]>>(
@@ -93,7 +96,8 @@ apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
 
 // POST /api/url
 apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => {
-  logger.info(`[${c.get('requestId')}] POST /api/url - Creating new URLs with optimized hash collision handling`)
+  const requestId = c.get('requestId')
+  logger.info(`[${requestId}] POST /api/url - Creating new URLs with optimized hash collision handling`)
 
   try {
     const db = useDrizzle(c)
@@ -242,7 +246,7 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
       },
     })
   } catch (error) {
-    logger.error('Error in URL creation process', error)
+    logger.error(`[${requestId}] Error in URL creation process`, error)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
     return c.json<ApiResponse>(
@@ -257,7 +261,8 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
 
 // PUT /api/url
 apiRoutes.put('/url', zValidator('json', updateUrlRequestSchema), async (c) => {
-  logger.info(`[${c.get('requestId')}] PUT /api/url - Updating URLs`)
+  const requestId = c.get('requestId')
+  logger.info(`[${requestId}] PUT /api/url - Updating URLs`)
 
   try {
     const db = useDrizzle(c)
@@ -359,7 +364,7 @@ apiRoutes.put('/url', zValidator('json', updateUrlRequestSchema), async (c) => {
       },
     })
   } catch (error) {
-    logger.error('Error in URL update process', error)
+    logger.error(`[${requestId}] Error in URL update process`, error)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
     return c.json<ApiResponse>(
@@ -374,7 +379,8 @@ apiRoutes.put('/url', zValidator('json', updateUrlRequestSchema), async (c) => {
 
 // DELETE /api/url
 apiRoutes.delete('/url', zValidator('json', deleteUrlRequestSchema), async (c) => {
-  logger.info(`[${c.get('requestId')}] DELETE /api/url - Soft deleting URLs`)
+  const requestId = c.get('requestId')
+  logger.info(`[${requestId}] DELETE /api/url - Soft deleting URLs`)
 
   try {
     const db = useDrizzle(c)
@@ -458,7 +464,7 @@ apiRoutes.delete('/url', zValidator('json', deleteUrlRequestSchema), async (c) =
       },
     })
   } catch (error) {
-    logger.error('Error in URL deletion process', error)
+    logger.error(`[${requestId}] Error in URL deletion process`, error)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
     return c.json<ApiResponse>(
