@@ -5,7 +5,7 @@ import { prettyJSON } from 'hono/pretty-json'
 import { HTTPException } from 'hono/http-exception'
 import { requestId } from 'hono/request-id'
 import { jwtMiddleware } from '@/middleware/jwt'
-import { shortCodeRoutes, apiRoutes, aiRoutes } from '@/routes'
+import { shortCodeRoutes, apiRoutes, aiRoutes, analyticsRoutes } from '@/routes'
 import { cleanupExpiredLinks } from '@/cron/cleanup'
 import type { CloudflareEnv, Variables } from '@/types'
 import './global'
@@ -29,6 +29,7 @@ app.use('/api/*', jwtMiddleware)
 app.route('/', shortCodeRoutes)
 app.route('/api', apiRoutes)
 app.route('/api/ai', aiRoutes)
+app.route('/api/analytics', analyticsRoutes)
 
 // Global error handler
 app.onError((err, c) => {
@@ -92,7 +93,7 @@ app.notFound((c) => {
   )
 })
 
-logger.info('Hono application initialization completed')
+logger.info('Hono application initialization completed with analytics support')
 
 // Cloudflare Workers scheduled event handler
 export default {
