@@ -16,6 +16,7 @@ import type {
   ApiResponse,
   BatchOperationResponse,
   CloudflareEnv,
+  UrlData,
   Variables,
 } from '@/types'
 
@@ -169,21 +170,25 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
           const expiresAt = record.expiresAt || getDefaultExpiresAt()
 
           // Insert into database
-          await db?.insert(links).values({
-            url: record.url,
-            userId: record.userId || '',
-            expiresAt,
-            hash,
-            shortCode,
-            domain,
-            attribute: record.attribute,
-          })
+          const insertedRecord = await db
+            ?.insert(links)
+            .values({
+              url: record.url,
+              userId: record.userId || '',
+              expiresAt,
+              hash,
+              shortCode,
+              domain,
+              attribute: record.attribute,
+            })
+            .returning()
+            .get()
 
           // Cache the newly created URL
           if (c.env.SHORTENER_KV) {
             try {
               const cacheKey = `url:${hash}`
-              const cacheData = {
+              const cacheData: UrlData = {
                 url: record.url,
                 hash,
                 shortCode,
@@ -191,7 +196,7 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
                 expiresAt,
                 userId: record.userId || '',
                 attribute: record.attribute,
-                id: null,
+                id: insertedRecord?.id || 0,
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 isDeleted: 0
