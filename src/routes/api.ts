@@ -16,6 +16,7 @@ import type {
   ApiResponse,
   BatchOperationResponse,
   CloudflareEnv,
+  UrlData,
   Variables,
 } from '@/types'
 
@@ -39,7 +40,9 @@ apiRoutes.post('/page', async (c) => {
       },
     })
   } catch (error) {
-    logger.error(`[${requestId}] Error in POST /api/page`, error)
+    logger.error(`[${requestId}] Error in POST /api/page, ${JSON.stringify({
+      error: error instanceof Error ? error.message : 'Unknown error',
+    })}`)
 
     return c.json<ApiResponse>(
       {
@@ -72,7 +75,7 @@ apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
       .where(eq(links.isDeleted, filterValue))
 
     logger.info(`Retrieved ${allLinks?.length || 0} links from database`)
-    logger.debug('Retrieved links data:', allLinks)
+    logger.debug(`Retrieved links data: ${JSON.stringify(allLinks)}`)
 
     return c.json<ApiResponse<typeof allLinks>>({
       code: 0,
@@ -80,7 +83,9 @@ apiRoutes.get('/url', zValidator('query', isDeletedQuerySchema), async (c) => {
       data: allLinks || [],
     })
   } catch (error) {
-    logger.error(`[${requestId}] Error retrieving URLs from database`, error)
+    logger.error(`[${requestId}] Error retrieving URLs from database, ${JSON.stringify({
+      error: error instanceof Error ? error.message : 'Unknown error',
+    })}`)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
     return c.json<ApiResponse<[]>>(
@@ -165,21 +170,25 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
           const expiresAt = record.expiresAt || getDefaultExpiresAt()
 
           // Insert into database
-          await db?.insert(links).values({
-            url: record.url,
-            userId: record.userId || '',
-            expiresAt,
-            hash,
-            shortCode,
-            domain,
-            attribute: record.attribute,
-          })
+          const insertedRecord = await db
+            ?.insert(links)
+            .values({
+              url: record.url,
+              userId: record.userId || '',
+              expiresAt,
+              hash,
+              shortCode,
+              domain,
+              attribute: record.attribute,
+            })
+            .returning()
+            .get()
 
           // Cache the newly created URL
           if (c.env.SHORTENER_KV) {
             try {
               const cacheKey = `url:${hash}`
-              const cacheData = {
+              const cacheData: UrlData = {
                 url: record.url,
                 hash,
                 shortCode,
@@ -187,7 +196,7 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
                 expiresAt,
                 userId: record.userId || '',
                 attribute: record.attribute,
-                id: null,
+                id: insertedRecord?.id || 0,
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 isDeleted: 0
@@ -197,7 +206,9 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
               })
               logger.debug(`Cached new URL for shortCode: ${shortCode}`)
             } catch (cacheError) {
-              logger.warn('Cache write error during URL creation', cacheError)
+              logger.warn(`Cache write error during URL creation, ${JSON.stringify({
+                error: cacheError instanceof Error ? cacheError.message : 'Unknown error',
+              })}`)
             }
           }
 
@@ -211,7 +222,9 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
             expiresAt,
           }
         } catch (error) {
-          logger.error(`Failed to create link for URL: ${record.url}`, error)
+          logger.error(`Failed to create link for URL: ${record.url}, ${JSON.stringify({
+            error: error instanceof Error ? error.message : 'Unknown error',
+          })}`)
           const errorMessage = error instanceof Error ? error.message : 'Unknown creation error'
           return {
             hash: record.hash || 'unknown',
@@ -230,11 +243,11 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
 
     // Log failure details for debugging
     if (failures.length > 0) {
-      logger.warn('URL creation failures:', failures.map(f => ({
+      logger.warn(`URL creation failures: ${JSON.stringify(failures.map(f => ({
         url: f.url,
         hash: f.hash,
         error: f.error
-      })))
+      })))}`)
     }
 
     return c.json<ApiResponse<BatchOperationResponse>>({
@@ -246,7 +259,9 @@ apiRoutes.post('/url', zValidator('json', createUrlRequestSchema), async (c) => 
       },
     })
   } catch (error) {
-    logger.error(`[${requestId}] Error in URL creation process`, error)
+    logger.error(`[${requestId}] Error in URL creation process, ${JSON.stringify({
+      error: error instanceof Error ? error.message : 'Unknown error',
+    })}`)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
     return c.json<ApiResponse>(
@@ -318,7 +333,9 @@ apiRoutes.put('/url', zValidator('json', updateUrlRequestSchema), async (c) => {
                 await c.env.SHORTENER_KV.delete(cacheKey)
                 logger.debug(`Cleared cache for updated hash: ${record.hash}`)
               } catch (cacheError) {
-                logger.warn('Cache clear error during URL update', cacheError)
+                logger.warn(`Cache clear error during URL update, ${JSON.stringify({
+                  error: cacheError instanceof Error ? cacheError.message : 'Unknown error',
+                })}`)
               }
             }
 
@@ -336,7 +353,9 @@ apiRoutes.put('/url', zValidator('json', updateUrlRequestSchema), async (c) => {
             error: 'No fields to update',
           }
         } catch (error) {
-          logger.error(`Error updating record with hash ${record.hash}`, error)
+          logger.error(`Error updating record with hash ${record.hash}, ${JSON.stringify({
+            error: error instanceof Error ? error.message : 'Unknown error',
+          })}`)
           return {
             hash: record.hash,
             success: false,
@@ -352,7 +371,7 @@ apiRoutes.put('/url', zValidator('json', updateUrlRequestSchema), async (c) => {
     logger.info(`URL update completed - Successes: ${successes.length}, Failures: ${failures.length}`)
 
     if (failures.length > 0) {
-      logger.warn(`Some URL updates failed: ${failures.map((f) => ({ hash: f.hash, error: f.error }))}`)
+      logger.warn(`Some URL updates failed: ${JSON.stringify(failures.map((f) => ({ hash: f.hash, error: f.error })))}`)
     }
 
     return c.json<ApiResponse<BatchOperationResponse>>({
@@ -364,7 +383,9 @@ apiRoutes.put('/url', zValidator('json', updateUrlRequestSchema), async (c) => {
       },
     })
   } catch (error) {
-    logger.error(`[${requestId}] Error in URL update process`, error)
+    logger.error(`[${requestId}] Error in URL update process, ${JSON.stringify({
+      error: error instanceof Error ? error.message : 'Unknown error',
+    })}`)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
     return c.json<ApiResponse>(
@@ -387,7 +408,7 @@ apiRoutes.delete('/url', zValidator('json', deleteUrlRequestSchema), async (c) =
     const { hashList } = c.req.valid('json')
 
     logger.info(`Processing ${hashList.length} URLs for soft deletion`)
-    logger.debug('Hash list for deletion:', hashList)
+    logger.debug(`Hash list for deletion: ${JSON.stringify(hashList)}`)
 
     const results = await Promise.all(
       hashList.map(async (hash, index) => {
@@ -416,7 +437,9 @@ apiRoutes.delete('/url', zValidator('json', deleteUrlRequestSchema), async (c) =
                 await c.env.SHORTENER_KV.delete(ogCacheKey)
                 logger.debug(`Cleared cache for deleted hash: ${hash}`)
               } catch (cacheError) {
-                logger.warn('Cache clear error during URL deletion', cacheError)
+                logger.warn(`Cache clear error during URL deletion, ${JSON.stringify({
+                  error: cacheError instanceof Error ? cacheError.message : 'Unknown error',
+                })}`)
               }
             }
 
@@ -434,7 +457,9 @@ apiRoutes.delete('/url', zValidator('json', deleteUrlRequestSchema), async (c) =
             }
           }
         } catch (error) {
-          logger.error(`Error soft deleting record with hash ${hash}`, error)
+          logger.error(`Error soft deleting record with hash ${hash}, ${JSON.stringify({
+            error: error instanceof Error ? error.message : 'Unknown error',
+          })}`)
           const errorMessage =
             error instanceof Error ? error.message : 'Unknown deletion error'
           return {
@@ -452,7 +477,7 @@ apiRoutes.delete('/url', zValidator('json', deleteUrlRequestSchema), async (c) =
     logger.info(`URL deletion completed - Successes: ${successes.length}, Failures: ${failures.length}`)
 
     if (failures.length > 0) {
-      logger.warn(`Some URL deletions failed: ${failures.map((f) => ({ hash: f.hash, error: f.error }))}`)
+      logger.warn(`Some URL deletions failed: ${JSON.stringify(failures.map((f) => ({ hash: f.hash, error: f.error })))}`)
     }
 
     return c.json<ApiResponse<BatchOperationResponse>>({
@@ -464,7 +489,9 @@ apiRoutes.delete('/url', zValidator('json', deleteUrlRequestSchema), async (c) =
       },
     })
   } catch (error) {
-    logger.error(`[${requestId}] Error in URL deletion process`, error)
+    logger.error(`[${requestId}] Error in URL deletion process, ${JSON.stringify({
+      error: error instanceof Error ? error.message : 'Unknown error',
+    })}`)
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
     return c.json<ApiResponse>(

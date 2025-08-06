@@ -38,7 +38,11 @@ async function jwtVerifyFn(jwtPubkey: string, token: string) {
 
     return result
   } catch (error) {
-    logger.error('JWT verification function failed', error)
+    logger.error(
+      `JWT verification function failed, ${JSON.stringify({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })}`
+    )
     throw error
   }
 }
@@ -79,20 +83,22 @@ export const jwtMiddleware: MiddlewareHandler<{
     const verify = await jwtVerifyFn(jwtPubkey, token)
 
     logger.info('JWT verification succeeded')
-    logger.debug('JWT payload extracted:', {
-      sub: verify.payload.sub,
-      iat: verify.payload.iat,
-      exp: verify.payload.exp,
-      // Don't log full payload in production for security
-    })
+    logger.debug(
+      `JWT payload extracted: ${JSON.stringify({
+        sub: verify.payload.sub,
+        iat: verify.payload.iat,
+        exp: verify.payload.exp,
+      })}`
+    )
 
     c.set('auth', verify.payload)
     await next()
   } catch (error) {
-    logger.error('JWT verification failed', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      // Don't log the actual token for security reasons
-    })
+    logger.error(
+      `JWT verification failed, ${JSON.stringify({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })}`
+    )
     throw new HTTPException(401, { message: 'Invalid token' })
   }
 }

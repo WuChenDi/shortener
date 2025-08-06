@@ -113,3 +113,37 @@ export const suggestionsSchema = z.object({
     .max(5, 'Count cannot exceed 5')
     .default(3),
 })
+
+export const analyticsQuerySchema = z.object({
+  linkId: z.string().optional(),
+  userId: z.string().optional(),
+  hash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/i, 'Hash must be a 64-character hexadecimal string')
+    .optional(),
+  domain: z.string().optional(),
+  country: z.string().optional(),
+  startTime: z
+    .string()
+    .transform((val) => Number.parseInt(val))
+    .optional(),
+  endTime: z
+    .string()
+    .transform((val) => Number.parseInt(val))
+    .optional(),
+  limit: z
+    .string()
+    .optional()
+    .default('100')
+    .transform((val) => Number.parseInt(val)),
+  offset: z
+    .string()
+    .optional()
+    .default('0')
+    .transform((val) => Number.parseInt(val)),
+})
+
+export const timeSeriesQuerySchema = analyticsQuerySchema.extend({
+  interval: z.enum(['hour', 'day', 'week', 'month']).default('day'),
+  timezone: z.string().default('UTC'),
+})
