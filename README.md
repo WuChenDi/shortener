@@ -18,6 +18,8 @@ A URL shortener service built with Cloudflare Workers and Hono.
 - ⚡ **KV Caching**: Cloudflare KV-based caching for high-performance URL resolution.
 - 🔀 **Optimized Hash Generation**: Base62 + timestamp algorithm for collision reduction.
 - 🕐 **Automated Cleanup**: Daily scheduled task to clean up expired links.
+- 🤖 **AI-Driven Slug Generation**: Semantic short codes using Cloudflare AI.
+- 📈 **Analytics**: Track and analyze short link performance with Cloudflare Analytics Engine.
 
 ## 🏗️ Tech Stack
 
@@ -27,6 +29,8 @@ A URL shortener service built with Cloudflare Workers and Hono.
 - **Cache**: Cloudflare KV - Edge key-value storage.
 - **ORM**: [Drizzle ORM](https://orm.drizzle.team/) - TypeScript-first ORM.
 - **Authentication**: JWT (ES256) - Elliptic Curve Digital Signature.
+- **AI**: Cloudflare AI - For semantic slug generation.
+- **Analytics**: Cloudflare Analytics Engine - For tracking link performance.
 - **Package Manager**: pnpm - Fast, disk-efficient.
 - **Type Checking**: TypeScript - Static type safety.
 - **Deployment**: Cloudflare Workers - Edge computing platform.
@@ -47,33 +51,43 @@ graph TB
         D[Cloudflare Workers]
         E[Cloudflare KV Cache]
         F[Cron Triggers]
+        G[Cloudflare AI]
+        H[Cloudflare Analytics Engine]
     end
     subgraph Application Layer
-        G[Hono Framework]
-        H[Middleware Stack]
-        I[Route Handlers]
-        J[Cache Service]
-        K[Cleanup Service]
+        I[Hono Framework]
+        J[Middleware Stack]
+        K[Route Handlers]
+        L[Cache Service]
+        M[Cleanup Service]
+        N[AI Service]
+        O[Analytics Service]
     end
     subgraph Database Layer
-        L[Drizzle ORM]
-        M[Cloudflare D1]
-        N[LibSQL/Turso]
+        P[Drizzle ORM]
+        Q[Cloudflare D1]
+        R[LibSQL/Turso]
     end
     A --> D
     B --> D
     C --> D
     D --> E
     D --> G
-    F --> K
-    G --> H
-    H --> I
+    D --> H
+    D --> I
+    F --> M
     I --> J
-    J --> E
-    I --> L
+    J --> K
     K --> L
-    L --> M
-    L --> N
+    K --> N
+    K --> O
+    L --> E
+    N --> G
+    O --> H
+    K --> P
+    M --> P
+    P --> Q
+    P --> R
 ```
 
 ### Caching Strategy
@@ -83,15 +97,17 @@ The service implements a multi-layer caching strategy:
 1. **KV Cache Layer**: Primary cache using Cloudflare KV
    - URL data cached for 1 hour
    - OG page HTML cached for 1 hour
+   - AI-generated slugs cached for 1 hour
    - Automatic cache invalidation on updates/deletions
 
 2. **Cache Keys**:
    - URL data: `url:{hash}`
    - OG pages: `og:{hash}`
+   - AI slugs: `ai:slug:{url}`
 
 3. **Cache Flow**:
-   - Read: Cache → Database (on miss)
-   - Write: Database → Cache
+   - Read: Cache → Database/AI (on miss)
+   - Write: Database/AI → Cache
    - Update: Database → Cache invalidation
    - Delete: Database → Cache invalidation
 
@@ -109,7 +125,7 @@ The service includes automated maintenance through Cloudflare Cron Triggers:
    - Query expired links: `WHERE isDeleted = 0 AND expiresAt < current_time`
    - Batch processing: 50 links per batch with 100ms delays
    - Soft delete: Updates `isDeleted = 1` and `updatedAt = now()`
-   - Cache cleanup: Removes both `url:{hash}` and `og:{hash}` entries
+   - Cache cleanup: Removes `url:{hash}`, `og:{hash}`, and `ai:slug:{url}` entries
    - Error handling: Individual failures don't stop the entire process
 
 ## 📦 Installation
@@ -153,13 +169,23 @@ LIBSQL_AUTH_TOKEN=your-libsql-auth-token
 # Cloudflare Configuration
 # The Cloudflare account ID for accessing Cloudflare services.
 CLOUDFLARE_ACCOUNT_ID=
-# The Cloudflare database ID for connecting to the Cloudflare database.
-CLOUDFLARE_DATABASE_ID=
 # The Cloudflare API token for authentication and authorization.
 CLOUDFLARE_API_TOKEN=
 
 # The public key for JWT verification
 JWT_PUBKEY=your-jwt-public-key
+
+# AI Functional Configuration
+ENABLE_AI_SLUG=true
+AI_MODEL=@cf/meta/llama-3.1-8b-instruct
+AI_ENABLE_CACHE=true
+AI_MAX_RETRIES=3
+AI_TIMEOUT=10000
+
+# Analytics Engine Configuration
+ANALYTICS_DATASET=shortener_analytics
+ANALYTICS_SAMPLE_RATE=1.0
+DISABLE_BOT_ANALYTICS=false
 
 ```
 
@@ -181,11 +207,30 @@ JWT_PUBKEY=your-jwt-public-key
     "DB_TYPE": "d1",
     // LibSQL Configuration
     // The URL for connecting to the LibSQL database. Default is a local SQLite file.
-    "LIBSQL_URL": "libsql://your-libsql-database-url",
+    "LIBSQL_URL": "your-libsql-url",
     // The authentication token for accessing the LibSQL
     "LIBSQL_AUTH_TOKEN": "your-libsql-auth-token",
+
+    // Cloudflare Configuration
+    // The Cloudflare account ID for accessing Cloudflare services.
+    "CLOUDFLARE_ACCOUNT_ID": "your-cloudflare-account-id",
+    // The Cloudflare API token for authentication and authorization.
+    "CLOUDFLARE_API_TOKEN": "your-cloudflare-api-token",
+
     // The public key for JWT verification
     "JWT_PUBKEY": "your-jwt-public-key",
+
+    // AI Functional Configuration
+    "ENABLE_AI_SLUG": "true",
+    "AI_MODEL": "@cf/meta/llama-3.1-8b-instruct",
+    "AI_ENABLE_CACHE": "true",
+    "AI_MAX_RETRIES": "3",
+    "AI_TIMEOUT": "10000",
+
+    // Analytics Engine Configuration
+    "ANALYTICS_DATASET": "shortener_analytics",
+    "ANALYTICS_SAMPLE_RATE": "1.0",
+    "DISABLE_BOT_ANALYTICS": "false"
   },
   "d1_databases": [
     {
@@ -199,6 +244,15 @@ JWT_PUBKEY=your-jwt-public-key
     {
       "binding": "SHORTENER_KV",
       "id": "your-kv-namespace-id-here"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "analytics_engine_datasets": [
+    {
+      "binding": "ANALYTICS",
+      "dataset": "shortener_analytics"
     }
   ],
   "triggers": {
@@ -230,6 +284,10 @@ JWT_PUBKEY=your-jwt-public-key
 1. Create KV namespace: `wrangler kv:namespace create "SHORTENER_KV"`
 2. Update the `id` in `wrangler.jsonc` with the returned namespace ID.
 
+**Setup Cloudflare Analytics Engine:**
+1. Create Analytics Engine dataset: `wrangler analytics:dataset create shortener_analytics`
+2. Update the `analytics_engine_datasets` in `wrangler.jsonc` with the dataset name.
+
 ## 🚀 Development
 
 ### Generate JWT Key Pair
@@ -253,6 +311,13 @@ wrangler kv:namespace create "SHORTENER_KV"
 wrangler kv:namespace create "SHORTENER_KV" --preview false
 ```
 
+### Setup Analytics Engine
+
+```bash
+# Create Analytics Engine dataset
+wrangler analytics:dataset create shortener_analytics
+```
+
 ### Local Development (LibSQL)
 
 ```bash
@@ -274,6 +339,9 @@ wrangler d1 create shortener-db
 
 # Create KV namespace
 wrangler kv:namespace create "SHORTENER_KV"
+
+# Create Analytics Engine dataset
+wrangler analytics:dataset create shortener_analytics
 
 # Generate migrations
 pnpm drizzle-kit generate
@@ -356,7 +424,7 @@ Request body:
     {
       "url": "https://bit.ly/m/wuchendi", // Required, target URL
       "userId": "wudi", // Optional, default is an empty string
-      "hash": "zCwixTtm", // Optional, custom short code (auto-generated using Base62+timestamp algorithm if not provided)
+      "hash": "zCwixTtm", // Optional, custom short code (auto-generated using Base62+timestamp or AI if not provided)
       "expiresAt": null, // Optional, default is 1 hour from now (timestamp in milliseconds)
       "attribute": null // Optional, additional attributes as JSON
     }
@@ -442,29 +510,114 @@ Response:
 }
 ```
 
-**Note**: Deleting URLs removes both the URL data and OG page caches.
+**Note**: Deleting URLs removes `url:{hash}`, `og:{hash}`, and `ai:slug:{url}` cache entries.
 
-### Short Link Access
+### AI-Driven Slug Generation
 
-#### Redirect to Target URL
+#### Generate Semantic Slug
 
-**GET /:shortCode**
+**POST /api/ai/slug**
 
-Redirects to the target URL. Supports social media crawler detection.
+Generates a semantic short code using Cloudflare AI based on the target URL's content.
 
-**Performance**: 
-- First checks KV cache for instant response
-- Falls back to database query if cache miss
-- Caches database results for subsequent requests
-- Automatic cache invalidation for expired links
+Request body:
+```json
+{
+  "url": "https://bit.ly/m/wuchendi", // Required, target URL
+  "maxLength": 10, // Optional, maximum length of the slug (default: 8)
+  "language": "en" // Optional, language for slug generation (default: en)
+}
+```
 
-#### OG Tags Page
+Response:
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "slug": "WuChenDi",
+    "confidence": 0.95,
+    "shortUrl": "https://shortener.cdlab.workers.dev/WuChenDi"
+  }
+}
+```
 
-**GET /:shortCode/og**
+**Features**:
+- Uses Cloudflare AI (`@cf/meta/llama-3-8b-instruct`) to generate meaningful slugs based on URL content or metadata.
+- Caches AI-generated slugs in KV (`ai:slug:{url}`) for 1 hour to reduce API calls.
+- Validates slugs against a regex pattern (e.g., alphanumeric, 4-10 characters).
+- Fallback to Base62+timestamp algorithm if AI generation fails.
+- Configurable timeout (`AI_TIMEOUT`) and retry (`AI_MAX_RETRIES`) settings.
 
-Serves HTML with OG tags for social media crawlers.
+**Performance**:
+- AI response cached to minimize latency.
+- Automatic cache invalidation on URL updates or deletions.
+- Error handling for invalid AI responses or timeouts.
 
-**Caching**: OG pages are cached separately to improve social media crawler response times.
+### Analytics
+
+#### Retrieve Analytics Data
+
+**GET /api/analytics**
+
+Fetches performance metrics for short links using Cloudflare Analytics Engine.
+
+Query parameters:
+- `shortCode`: Optional, filter by specific short code
+- `startTime`: Required, start timestamp (ISO 8601 or Unix milliseconds)
+- `endTime`: Required, end timestamp (ISO 8601 or Unix milliseconds)
+- `interval`: Optional, aggregation interval (e.g., `1h`, `1d`, default: `1h`)
+- `timezone`: Optional, timezone for time-based aggregation (default: `UTC`)
+- `dimensions`: Optional, comma-separated list of dimensions (e.g., `country,device,browser`)
+- `limit`: Optional, maximum number of results (default: 1000)
+
+Response:
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "timeseries": [
+      {
+        "timeLabel": "2025-07-24T10:00:00Z",
+        "clicks": 150,
+        "country": "US",
+        "device": "desktop",
+        "browser": "Chrome"
+      },
+      {
+        "timeLabel": "2025-07-24T11:00:00Z",
+        "clicks": 120,
+        "country": "US",
+        "device": "mobile",
+        "browser": "Safari"
+      }
+    ],
+    "totals": {
+      "clicks": 270,
+      "uniqueVisitors": 200
+    }
+  }
+}
+```
+
+**Features**:
+- Powered by Cloudflare Analytics Engine for high-performance queries.
+- Supports multiple dimensions: `country`, `device`, `browser`, `referrer`, `os`.
+- Bot filtering to exclude automated traffic (based on `User-Agent`).
+- Sampling rate configuration to balance accuracy and performance.
+- Sanitized SQL inputs to prevent injection attacks.
+- Cached query results in KV for 5 minutes to reduce Analytics Engine load.
+
+**Performance**:
+- Optimized for large datasets with batch processing and sampling.
+- Cache layer reduces repetitive queries.
+- Dynamic SQL generation for flexible dimension combinations.
+
+**Example Query**:
+```bash
+GET /api/analytics?shortCode=X82qSitG&startTime=2025-07-24T00:00:00Z&endTime=2025-07-25T00:00:00Z&dimensions=country,device&interval=1h
+```
 
 ## 🗄️ Database Schema
 
@@ -476,7 +629,7 @@ Serves HTML with OG tags for social media crawlers.
 | url         | TEXT    | Target URL                   |
 | userId      | TEXT    | User ID                      |
 | hash        | TEXT    | Unique internal hash for security |
-| shortCode   | TEXT    | User-facing short code       |
+| shortCode   | TEXT    | User-facing short code (Base62 or AI-generated) |
 | domain      | TEXT    | Domain name for multi-tenant support |
 | expiresAt   | INTEGER | Expiration timestamp         |
 | attribute   | BLOB    | Additional attributes (JSON) |
@@ -519,29 +672,51 @@ Serves HTML with OG tags for social media crawlers.
 - `toBase62()`: Converts numbers to Base62 encoding.
 - `generateHashFromDomainAndCode()`: Creates domain-specific hashes.
 
+### AI Utilities (`slug.ts`)
+
+- `generateAISlug()`: Calls Cloudflare AI to generate semantic slugs.
+- `parseAIResponse()`: Validates and parses AI-generated slug responses.
+- `cacheAISlug()`: Caches AI slugs in KV with `ai:slug:{url}` keys.
+- `validateSlug()`: Ensures slugs meet length and pattern requirements.
+
+### Analytics Utilities (`analytics.ts`)
+
+- `sanitizeSqlInput()`: Prevents SQL injection in Analytics Engine queries.
+- `buildWhereConditions()`: Dynamically constructs SQL WHERE clauses.
+- `getIntervalFormat()`: Maps intervals to SQL-compatible formats.
+- `isBot()`: Filters bot traffic based on `User-Agent`.
+
 ### Cleanup Service (`cron/cleanup.ts`)
 
 - `cleanupExpiredLinks()`: Automated expired link cleanup function.
 - **Batch Processing**: Handles large datasets efficiently (50 links per batch).
 - **Error Resilience**: Individual failures don't stop the entire cleanup process.
 - **Comprehensive Logging**: Detailed execution statistics and error reporting.
-- **Cache Synchronization**: Automatically clears related KV cache entries.
+- **Cache Synchronization**: Automatically clears `url:{hash}`, `og:{hash}`, and `ai:slug:{url}` cache entries.
 
 ## ⚡ Performance Optimizations
 
 ### Caching Strategy
 
-1. **Multi-layer Caching**: KV cache → Database fallback
+1. **Multi-layer Caching**: KV cache → Database/AI/Analytics Engine fallback
 2. **Smart Invalidation**: Automatic cache clearing on updates/deletions
-3. **TTL Management**: 1-hour cache expiration for optimal balance
-4. **Separate Cache Keys**: Different cache strategies for URLs and OG pages
+3. **TTL Management**: 1-hour cache expiration for URLs, OG pages, and AI slugs; 5-minute expiration for analytics queries
+4. **Separate Cache Keys**: Different cache strategies for URLs, OG pages, AI slugs, and analytics
 
 ### Hash Algorithm
 
 1. **Collision Reduction**: Base62 + timestamp approach reduces conflicts by ~99%
 2. **Retry Mechanism**: Automatic collision detection with fallback generation
-3. **Time-based Ordering**: Improves cache locality and database performance
-4. **Configurable Length**: Default 8 characters with dynamic extension on conflicts
+3. **AI Fallback**: Uses AI-generated slugs when requested
+4. **Time-based Ordering**: Improves cache locality and database performance
+5. **Configurable Length**: Default 8 characters with dynamic extension on conflicts
+
+### Analytics Optimization
+
+1. **Query Efficiency**: Dynamic SQL generation for flexible analytics queries
+2. **Bot Filtering**: Excludes automated traffic for accurate metrics
+3. **Sampling**: Configurable sampling rate to balance accuracy and performance
+4. **Caching**: 5-minute KV cache for repetitive analytics queries
 
 ### Automated Maintenance
 
@@ -585,6 +760,26 @@ The cleanup task provides detailed metrics:
 - **Error Count**: Number of failures (with detailed error messages)
 - **Batch Processing**: Efficient handling of large datasets
 
+### Analytics Monitoring
+
+Monitor analytics query performance via Cloudflare Workers logs:
+
+```bash
+# Filter for analytics logs
+wrangler tail --grep "analytics"
+```
+
+**Expected Log Output:**
+```json
+{
+  "message": "Analytics query executed",
+  "query": "SELECT timeLabel, clicks FROM shortener_analytics WHERE shortCode = 'X82qSitG'",
+  "executionTimeMs": 150,
+  "resultCount": 24,
+  "cacheHit": false
+}
+```
+
 ### Customizing Cleanup Schedule
 
 To modify the cleanup frequency, update the cron expression in `wrangler.jsonc`:
@@ -617,6 +812,8 @@ pnpm run preview
 - ✅ Check initial cleanup execution in logs
 - ✅ Monitor cleanup task performance metrics
 - ✅ Validate cache synchronization after cleanup
+- ✅ Test AI slug generation endpoint
+- ✅ Verify analytics data collection and query performance
 
 ## 📜 License
 

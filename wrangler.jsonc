@@ -16,13 +16,14 @@
     "LIBSQL_URL": "libsql://your-libsql-database-url",
     // The authentication token for accessing the LibSQL
     "LIBSQL_AUTH_TOKEN": "your-libsql-auth-token",
-    // The public key for JWT verification
-    "JWT_PUBKEY": "your-jwt-public-key",
 
     // # The Cloudflare account ID for accessing Cloudflare services.
     "CLOUDFLARE_ACCOUNT_ID": "your-cloudflare-account-id",
     // # The Cloudflare API token for authentication and authorization.
     "CLOUDFLARE_API_TOKEN": "your-cloudflare-api-token",
+
+    // The public key for JWT verification
+    "JWT_PUBKEY": "your-jwt-public-key",
 
     // AI Functional Configuration
     "ENABLE_AI_SLUG": "true",
