@@ -165,19 +165,22 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
           .limit(1)
           .get()) || null
 
-      // If found, write to cache
+      // If found, check expiration before caching
       if (urlData && c.env.SHORTENER_KV) {
-        try {
-          await c.env.SHORTENER_KV.put(cacheKey, JSON.stringify(urlData), {
-            expirationTtl: 3600, // Cache for 1 hour
-          })
-          logger.debug(`Cached URL data for shortcode: ${shortCode}`)
-        } catch (cacheError) {
-          logger.warn(
-            `Cache write error, ${JSON.stringify({
-              error: cacheError instanceof Error ? cacheError.message : 'Unknown error',
-            })}`
-          )
+        const isExpired = urlData.expiresAt && Date.now() > urlData.expiresAt
+        if (!isExpired) {
+          try {
+            await c.env.SHORTENER_KV.put(cacheKey, JSON.stringify(urlData), {
+              expirationTtl: 3600, // Cache for 1 hour
+            })
+            logger.debug(`Cached URL data for shortcode: ${shortCode}`)
+          } catch (cacheError) {
+            logger.warn(
+              `Cache write error, ${JSON.stringify({
+                error: cacheError instanceof Error ? cacheError.message : 'Unknown error',
+              })}`
+            )
+          }
         }
       }
     }
