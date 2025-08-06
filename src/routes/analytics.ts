@@ -1,45 +1,12 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
-import { z } from 'zod'
-import { getDatasetName } from '@/utils'
+import { getDatasetName, analyticsQuerySchema, timeSeriesQuerySchema } from '@/utils'
 import type { CloudflareEnv, Variables, ApiResponse } from '@/types'
 
 export const analyticsRoutes = new Hono<{
   Bindings: CloudflareEnv
   Variables: Variables
 }>()
-
-// Validation schemas
-const analyticsQuerySchema = z.object({
-  linkId: z.string().optional(),
-  userId: z.string().optional(),
-  shortCode: z.string().optional(),
-  domain: z.string().optional(),
-  country: z.string().optional(),
-  startTime: z
-    .string()
-    .transform((val) => Number.parseInt(val))
-    .optional(),
-  endTime: z
-    .string()
-    .transform((val) => Number.parseInt(val))
-    .optional(),
-  limit: z
-    .string()
-    .optional()
-    .default('100')
-    .transform((val) => Number.parseInt(val)),
-  offset: z
-    .string()
-    .optional()
-    .default('0')
-    .transform((val) => Number.parseInt(val)),
-})
-
-const timeSeriesQuerySchema = analyticsQuerySchema.extend({
-  interval: z.enum(['hour', 'day', 'week', 'month']).default('day'),
-  timezone: z.string().default('UTC'),
-})
 
 // GET /api/analytics/overview
 analyticsRoutes.get('/overview', zValidator('query', analyticsQuerySchema), async (c) => {
