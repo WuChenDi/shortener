@@ -802,9 +802,6 @@ To modify the cleanup frequency, update the cron expression in `wrangler.jsonc`:
 ```bash
 # Build and deploy
 pnpm run deploy
-
-# Preview deployment
-pnpm run preview
 ```
 
 **Post-Deployment Checklist:**

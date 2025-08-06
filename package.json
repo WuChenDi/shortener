@@ -37,12 +37,12 @@
     "ua-parser-js": "^2.0.4",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^5.0.0",
-    "zod": "^4.0.14"
+    "zod": "^4.0.15"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250803.0",
+    "@cloudflare/workers-types": "^4.20250806.0",
     "@types/node": "^22",
     "drizzle-kit": "^0.31.4",
-    "wrangler": "^4.27.0"
+    "wrangler": "^4.28.0"
   }
 }
