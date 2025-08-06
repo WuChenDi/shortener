@@ -39,7 +39,11 @@ shortCodeRoutes.get('/', async (c) => {
       logger.debug('Database connectivity test passed')
     } catch (dbError) {
       dbStatus = 'disconnected'
-      logger.warn('Database connectivity test failed', dbError)
+      logger.warn(
+        `Database connectivity test failed, ${JSON.stringify({
+          error: dbError instanceof Error ? dbError.message : 'Unknown error',
+        })}`
+      )
     }
 
     // Check analytics availability
@@ -50,11 +54,13 @@ shortCodeRoutes.get('/', async (c) => {
       logger.warn('Analytics Engine not available')
     }
 
-    logger.info('Service health check completed', {
-      status: 'healthy',
-      dbStatus,
-      analyticsStatus,
-    })
+    logger.info(
+      `Service health check completed, ${JSON.stringify({
+        status: 'healthy',
+        dbStatus,
+        analyticsStatus,
+      })}`
+    )
 
     return c.json<ApiResponse<ServiceHealthResponse>>({
       code: 0,
@@ -69,7 +75,11 @@ shortCodeRoutes.get('/', async (c) => {
       },
     })
   } catch (error) {
-    logger.error(`[${requestId}] Error during health check`, error)
+    logger.error(
+      `[${requestId}] Error during health check, ${JSON.stringify({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })}`
+    )
 
     return c.json<ApiResponse<ServiceHealthResponse>>(
       {
@@ -137,7 +147,11 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
           logger.debug(`Cache miss for shortcode: ${shortCode}`)
         }
       } catch (cacheError) {
-        logger.warn('Cache read error, falling back to database', cacheError)
+        logger.warn(
+          `Cache read error, falling back to database, ${JSON.stringify({
+            error: cacheError instanceof Error ? cacheError.message : 'Unknown error',
+          })}`
+        )
       }
     }
 
@@ -159,7 +173,11 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
           })
           logger.debug(`Cached URL data for shortcode: ${shortCode}`)
         } catch (cacheError) {
-          logger.warn('Cache write error', cacheError)
+          logger.warn(
+            `Cache write error, ${JSON.stringify({
+              error: cacheError instanceof Error ? cacheError.message : 'Unknown error',
+            })}`
+          )
         }
       }
     }
@@ -178,18 +196,24 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
     // Check expiration
     const isExpired = urlData.expiresAt && Date.now() > urlData.expiresAt
     if (isExpired) {
-      logger.warn(`Shortcode expired: ${shortCode}`, {
-        expiresAt: urlData.expiresAt,
-        currentTime: Date.now(),
-        expired: isExpired,
-      })
+      logger.warn(
+        `Shortcode expired: ${shortCode}, ${JSON.stringify({
+          expiresAt: urlData.expiresAt,
+          currentTime: Date.now(),
+          expired: isExpired,
+        })}`
+      )
 
       // delete cache if expired
       if (c.env.SHORTENER_KV) {
         try {
           await c.env.SHORTENER_KV.delete(cacheKey)
         } catch (cacheError) {
-          logger.warn('Cache delete error', cacheError)
+          logger.warn(
+            `Cache delete error, ${JSON.stringify({
+              error: cacheError instanceof Error ? cacheError.message : 'Unknown error',
+            })}`
+          )
         }
       }
 
@@ -206,18 +230,24 @@ shortCodeRoutes.get('/:shortCode', async (c) => {
     c.set('urlData', urlData)
 
     logger.info(`Redirecting shortcode ${shortCode} to: ${urlData.url}`)
-    logger.debug('Redirect details:', {
-      shortCode,
-      hash,
-      domain,
-      targetUrl: urlData.url,
-      userId: urlData.userId,
-      expiresAt: urlData.expiresAt,
-    })
+    logger.debug(
+      `Redirect details: ${JSON.stringify({
+        shortCode,
+        hash,
+        domain,
+        targetUrl: urlData.url,
+        userId: urlData.userId,
+        expiresAt: urlData.expiresAt,
+      })}`
+    )
 
     return c.redirect(urlData.url, 302)
   } catch (error) {
-    logger.error(`[${requestId}] Error processing shortcode ${shortCode}`, error)
+    logger.error(
+      `[${requestId}] Error processing shortcode ${shortCode}, ${JSON.stringify({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })}`
+    )
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 
     return c.json<ApiResponse>(
@@ -268,7 +298,11 @@ shortCodeRoutes.get('/:shortCode/og', async (c) => {
           return c.html(cachedHtml)
         }
       } catch (cacheError) {
-        logger.warn('OG cache read error', cacheError)
+        logger.warn(
+          `OG cache read error, ${JSON.stringify({
+            error: cacheError instanceof Error ? cacheError.message : 'Unknown error',
+          })}`
+        )
       }
     }
 
@@ -291,10 +325,12 @@ shortCodeRoutes.get('/:shortCode/og', async (c) => {
     }
 
     if (urlData.expiresAt && Date.now() > urlData.expiresAt) {
-      logger.warn(`OG page - shortcode expired: ${shortCode}`, {
-        expiresAt: urlData.expiresAt,
-        currentTime: Date.now(),
-      })
+      logger.warn(
+        `OG page - shortcode expired: ${shortCode}, ${JSON.stringify({
+          expiresAt: urlData.expiresAt,
+          currentTime: Date.now(),
+        })}`
+      )
       return c.json<ApiResponse>(
         {
           code: 404,
@@ -319,7 +355,11 @@ shortCodeRoutes.get('/:shortCode/og', async (c) => {
         })
         logger.debug(`Cached OG page for shortcode: ${shortCode}`)
       } catch (cacheError) {
-        logger.warn('OG cache write error', cacheError)
+        logger.warn(
+          `OG cache write error, ${JSON.stringify({
+            error: cacheError instanceof Error ? cacheError.message : 'Unknown error',
+          })}`
+        )
       }
     }
 
@@ -327,8 +367,11 @@ shortCodeRoutes.get('/:shortCode/og', async (c) => {
     return c.html(html)
   } catch (error) {
     logger.error(
-      `[${requestId}] Error processing OG page for shortcode ${shortCode}`,
-      error
+      `[${requestId}] Error processing OG page for shortcode ${shortCode}, ${JSON.stringify(
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+        }
+      )}`
     )
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
 

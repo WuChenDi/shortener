@@ -9,7 +9,7 @@ import type { CloudflareEnv, Variables, UrlData, AnalyticsData } from '@/types'
  */
 export function extractAnalyticsData(c: Context, urlData: UrlData): AnalyticsData {
   const request = c.req
-  // @ts-ignore
+  // @ts-expect-error
   const cf = c.env?.cf || c.req?.cf || {}
 
   // Parse user agent for device and browser information
@@ -90,14 +90,22 @@ export async function writeAnalytics(env: CloudflareEnv, data: AnalyticsData) {
     // Filter bot traffic if enabled
     const disableBotAnalytics = env.DISABLE_BOT_ANALYTICS === 'true'
     if (disableBotAnalytics && isBot(data.userAgent)) {
-      logger.debug('Bot traffic excluded from analytics', { userAgent: data.userAgent })
+      logger.debug(
+        `Bot traffic excluded from analytics, ${JSON.stringify({
+          userAgent: data.userAgent,
+        })}`
+      )
       return
     }
 
     // Apply sampling rate to reduce data volume
     const sampleRate = Number(env.ANALYTICS_SAMPLE_RATE || '1.0')
     if (Math.random() > sampleRate) {
-      logger.debug('Request sampled out of analytics', { sampleRate })
+      logger.debug(
+        `Request sampled out of analytics, ${JSON.stringify({
+          sampleRate,
+        })}`
+      )
       return
     }
 
@@ -158,20 +166,24 @@ export async function writeAnalytics(env: CloudflareEnv, data: AnalyticsData) {
       ],
     })
 
-    logger.debug('Analytics data written successfully', {
-      hash: safeData.hash,
-      linkId: safeData.linkId,
-      shortCode: safeData.shortCode,
-      country: safeData.country,
-      browser: safeData.browser,
-    })
+    logger.debug(
+      `Analytics data written successfully, ${JSON.stringify({
+        hash: safeData.hash,
+        linkId: safeData.linkId,
+        shortCode: safeData.shortCode,
+        country: safeData.country,
+        browser: safeData.browser,
+      })}`
+    )
   } catch (error) {
-    logger.error('Failed to write analytics data', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      hash: data.hash,
-      shortCode: data.shortCode,
-      stack: error instanceof Error ? error.stack : undefined,
-    })
+    logger.error(
+      `Failed to write analytics data, ${JSON.stringify({
+        error: error instanceof Error ? error.message : 'Unknown error',
+        hash: data.hash,
+        shortCode: data.shortCode,
+        stack: error instanceof Error ? error.stack : undefined,
+      })}`
+    )
   }
 }
 
@@ -197,7 +209,11 @@ export const analyticsMiddleware: MiddlewareHandler<{
       await writeAnalytics(c.env, analyticsData)
     } catch (error) {
       // Analytics errors should not affect the redirect response
-      logger.error('Analytics middleware error', error)
+      logger.error(
+        `Analytics middleware error, ${JSON.stringify({
+          error: error instanceof Error ? error.message : 'Unknown error',
+        })}`
+      )
     }
   }
 }

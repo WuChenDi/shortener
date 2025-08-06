@@ -206,7 +206,7 @@ export async function executeQuery(
   env: CloudflareEnv,
   sql: string
 ): Promise<CloudflareAnalyticsResponse> {
-  logger.debug('Executing Analytics Engine query', { sql })
+  logger.debug(`Executing Analytics Engine query, sql: ${sql}`)
 
   // Validate required credentials
   if (!env.CLOUDFLARE_ACCOUNT_ID || !env.CLOUDFLARE_API_TOKEN) {
@@ -226,18 +226,13 @@ export async function executeQuery(
     }
   )
 
-  // Handle API errors
   if (!response.ok) {
     const error = await response.text()
     throw new Error(`Analytics query failed: ${response.status} ${error}`)
   }
 
-  // Parse and return results
   const result: CloudflareAnalyticsResponse = await response.json()
-  logger.debug('Analytics query executed successfully', {
-    rowCount: result.rows,
-    metaFields: result.meta?.length || 0,
-  })
+  logger.debug(`Analytics query executed successfully, result: ${JSON.stringify(result)}`)
 
   return result
 }

@@ -23,7 +23,9 @@ analyticsRoutes.get('/overview', zValidator('query', analyticsQuerySchema), asyn
   const query = c.req.valid('query')
   const requestId = c.get('requestId')
 
-  logger.info(`[${requestId}] Analytics overview requested`, query)
+  logger.info(
+    `[${requestId}] Analytics overview requested, query: ${JSON.stringify(query)}`
+  )
 
   try {
     // Verify Analytics Engine availability
@@ -51,7 +53,7 @@ analyticsRoutes.get('/overview', zValidator('query', analyticsQuerySchema), asyn
       ${whereConditions}
     `
 
-    logger.debug('Executing analytics overview query', { sql })
+    logger.debug(`Executing analytics overview query, sql: ${sql}`)
     const { data: result } = await executeQuery(c.env, sql)
 
     // Provide default values if no data found
@@ -62,7 +64,9 @@ analyticsRoutes.get('/overview', zValidator('query', analyticsQuerySchema), asyn
       uniqueCountries: 0,
     }
 
-    logger.info(`[${requestId}] Analytics overview completed`, data)
+    logger.info(
+      `[${requestId}] Analytics overview completed, data: ${JSON.stringify(data)}`
+    )
 
     return c.json<ApiResponse>({
       code: 0,
@@ -70,7 +74,11 @@ analyticsRoutes.get('/overview', zValidator('query', analyticsQuerySchema), asyn
       data,
     })
   } catch (error) {
-    logger.error(`[${requestId}] Analytics overview failed`, error)
+    logger.error(
+      `[${requestId}] Analytics overview failed, ${JSON.stringify({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })}`
+    )
     return c.json<ApiResponse>(
       {
         code: 500,
@@ -89,7 +97,9 @@ analyticsRoutes.get(
     const query = c.req.valid('query')
     const requestId = c.get('requestId')
 
-    logger.info(`[${requestId}] Analytics timeseries requested`, query)
+    logger.info(
+      `[${requestId}] Analytics timeseries requested, query: ${JSON.stringify(query)}`
+    )
 
     try {
       if (!c.env.ANALYTICS) {
@@ -119,7 +129,7 @@ analyticsRoutes.get(
         LIMIT ${query.limit}
       `
 
-      logger.debug('Executing analytics timeseries query', { sql })
+      logger.debug(`Executing analytics timeseries query, sql: ${sql}`)
       const { data: result } = await executeQuery(c.env, sql)
 
       return c.json<ApiResponse>({
@@ -128,7 +138,11 @@ analyticsRoutes.get(
         data: result,
       })
     } catch (error) {
-      logger.error(`[${requestId}] Analytics timeseries failed`, error)
+      logger.error(
+        `[${requestId}] Analytics timeseries failed, ${JSON.stringify({
+          error: error instanceof Error ? error.message : 'Unknown error',
+        })}`
+      )
       return c.json<ApiResponse>(
         {
           code: 500,
@@ -148,7 +162,9 @@ analyticsRoutes.get(
     const query = c.req.valid('query')
     const requestId = c.get('requestId')
 
-    logger.info(`[${requestId}] Top countries analytics requested`, query)
+    logger.info(
+      `[${requestId}] Top countries analytics requested, query: ${JSON.stringify(query)}`
+    )
 
     try {
       if (!c.env.ANALYTICS) {
@@ -177,7 +193,7 @@ analyticsRoutes.get(
         LIMIT ${query.limit}
       `
 
-      logger.debug('Executing top countries query', { sql })
+      logger.debug(`Executing top countries query, sql: ${sql}`)
       const { data: result } = await executeQuery(c.env, sql)
 
       return c.json<ApiResponse>({
@@ -186,7 +202,11 @@ analyticsRoutes.get(
         data: result,
       })
     } catch (error) {
-      logger.error(`[${requestId}] Top countries analytics failed`, error)
+      logger.error(
+        `[${requestId}] Top countries analytics failed, ${JSON.stringify({
+          error: error instanceof Error ? error.message : 'Unknown error',
+        })}`
+      )
       return c.json<ApiResponse>(
         {
           code: 500,
@@ -206,7 +226,9 @@ analyticsRoutes.get(
     const query = c.req.valid('query')
     const requestId = c.get('requestId')
 
-    logger.info(`[${requestId}] Top referrers analytics requested`, query)
+    logger.info(
+      `[${requestId}] Top referrers analytics requested, query: ${JSON.stringify(query)}`
+    )
 
     try {
       if (!c.env.ANALYTICS) {
@@ -236,7 +258,7 @@ analyticsRoutes.get(
         LIMIT ${query.limit}
       `
 
-      logger.debug('Executing top referrers query', { sql })
+      logger.debug(`Executing top referrers query, sql: ${sql}`)
       const { data: result } = await executeQuery(c.env, sql)
 
       return c.json<ApiResponse>({
@@ -245,7 +267,11 @@ analyticsRoutes.get(
         data: result,
       })
     } catch (error) {
-      logger.error(`[${requestId}] Top referrers analytics failed`, error)
+      logger.error(
+        `[${requestId}] Top referrers analytics failed, ${JSON.stringify({
+          error: error instanceof Error ? error.message : 'Unknown error',
+        })}`
+      )
       return c.json<ApiResponse>(
         {
           code: 500,
@@ -262,7 +288,9 @@ analyticsRoutes.get('/devices', zValidator('query', analyticsQuerySchema), async
   const query = c.req.valid('query')
   const requestId = c.get('requestId')
 
-  logger.info(`[${requestId}] Device analytics requested`, query)
+  logger.info(
+    `[${requestId}] Device analytics requested, query: ${JSON.stringify(query)}`
+  )
 
   try {
     if (!c.env.ANALYTICS) {
@@ -295,7 +323,7 @@ analyticsRoutes.get('/devices', zValidator('query', analyticsQuerySchema), async
       LIMIT ${query.limit}
     `
 
-    logger.debug('Executing device analytics query', { sql })
+    logger.debug(`Executing device analytics query, sql: ${sql}`)
     const { data: result } = await executeQuery(c.env, sql)
 
     return c.json<ApiResponse>({
@@ -304,7 +332,11 @@ analyticsRoutes.get('/devices', zValidator('query', analyticsQuerySchema), async
       data: result,
     })
   } catch (error) {
-    logger.error(`[${requestId}] Device analytics failed`, error)
+    logger.error(
+      `[${requestId}] Device analytics failed, ${JSON.stringify({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })}`
+    )
     return c.json<ApiResponse>(
       {
         code: 500,
@@ -320,7 +352,9 @@ analyticsRoutes.get('/browsers', zValidator('query', analyticsQuerySchema), asyn
   const query = c.req.valid('query')
   const requestId = c.get('requestId')
 
-  logger.info(`[${requestId}] Browser analytics requested`, query)
+  logger.info(
+    `[${requestId}] Browser analytics requested, query: ${JSON.stringify(query)}`
+  )
 
   try {
     if (!c.env.ANALYTICS) {
@@ -352,7 +386,7 @@ analyticsRoutes.get('/browsers', zValidator('query', analyticsQuerySchema), asyn
       LIMIT ${query.limit}
     `
 
-    logger.debug('Executing browser analytics query', { sql })
+    logger.debug(`Executing browser analytics query, sql: ${sql}`)
     const { data: result } = await executeQuery(c.env, sql)
 
     return c.json<ApiResponse>({
@@ -361,7 +395,11 @@ analyticsRoutes.get('/browsers', zValidator('query', analyticsQuerySchema), asyn
       data: result,
     })
   } catch (error) {
-    logger.error(`[${requestId}] Browser analytics failed`, error)
+    logger.error(
+      `[${requestId}] Browser analytics failed, ${JSON.stringify({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })}`
+    )
     return c.json<ApiResponse>(
       {
         code: 500,
@@ -380,7 +418,9 @@ analyticsRoutes.get(
     const query = c.req.valid('query')
     const requestId = c.get('requestId')
 
-    logger.info(`[${requestId}] Operating systems analytics requested`, query)
+    logger.info(
+      `[${requestId}] Operating systems analytics requested, query: ${JSON.stringify(query)}`
+    )
 
     try {
       if (!c.env.ANALYTICS) {
@@ -409,7 +449,7 @@ analyticsRoutes.get(
         LIMIT ${query.limit}
       `
 
-      logger.debug('Executing operating systems analytics query', { sql })
+      logger.debug(`Executing operating systems analytics query, sql: ${sql}`)
       const { data: result } = await executeQuery(c.env, sql)
 
       return c.json<ApiResponse>({
@@ -418,7 +458,11 @@ analyticsRoutes.get(
         data: result,
       })
     } catch (error) {
-      logger.error(`[${requestId}] Operating systems analytics failed`, error)
+      logger.error(
+        `[${requestId}] Operating systems analytics failed, ${JSON.stringify({
+          error: error instanceof Error ? error.message : 'Unknown error',
+        })}`
+      )
       return c.json<ApiResponse>(
         {
           code: 500,
@@ -439,10 +483,12 @@ analyticsRoutes.get(
     const query = c.req.valid('query')
     const requestId = c.get('requestId')
 
-    logger.info(`[${requestId}] Link-specific analytics requested`, {
-      hash,
-      ...query,
-    })
+    logger.info(
+      `[${requestId}] Link-specific analytics requested, ${JSON.stringify({
+        hash,
+        ...query,
+      })}`
+    )
 
     try {
       if (!c.env.ANALYTICS) {
@@ -547,7 +593,7 @@ analyticsRoutes.get(
         LIMIT 10
       `
 
-      logger.debug('Executing comprehensive link analytics queries', { hash })
+      logger.debug(`Executing comprehensive link analytics queries, hash: ${hash}`)
 
       // Execute all queries in parallel for optimal performance
       const [
@@ -609,7 +655,12 @@ analyticsRoutes.get(
         },
       })
     } catch (error) {
-      logger.error(`[${requestId}] Link analytics failed`, { hash, error })
+      logger.error(
+        `[${requestId}] Link analytics failed, ${JSON.stringify({
+          hash,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        })}`
+      )
       return c.json<ApiResponse>(
         {
           code: 500,
@@ -657,7 +708,7 @@ analyticsRoutes.get('/real-time', async (c) => {
       LIMIT 100
     `
 
-    logger.debug('Executing real-time analytics query', { sql })
+    logger.debug(`Executing real-time analytics query, sql: ${sql}`)
     const { data: result } = await executeQuery(c.env, sql)
 
     // Process results for real-time dashboard display
@@ -683,7 +734,11 @@ analyticsRoutes.get('/real-time', async (c) => {
       },
     })
   } catch (error) {
-    logger.error(`[${requestId}] Real-time analytics failed`, error)
+    logger.error(
+      `[${requestId}] Real-time analytics failed, ${JSON.stringify({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })}`
+    )
     return c.json<ApiResponse>(
       {
         code: 500,

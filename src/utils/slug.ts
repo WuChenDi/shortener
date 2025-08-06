@@ -81,7 +81,12 @@ async function callAI(env: CloudflareEnv, url: string): Promise<AISlugResponse> 
   const timeoutId = setTimeout(() => controller.abort(), aiConfig.AI_TIMEOUT)
 
   try {
-    logger.debug('[AI] Calling AI service', { model: aiConfig.AI_MODEL, url })
+    logger.debug(
+      `[AI] Calling AI service, ${JSON.stringify({
+        model: aiConfig.AI_MODEL,
+        url,
+      })}`
+    )
 
     const response = await env.AI.run(aiConfig.AI_MODEL, {
       messages: [
@@ -114,12 +119,14 @@ async function callAI(env: CloudflareEnv, url: string): Promise<AISlugResponse> 
       throw new Error('Empty AI response')
     }
 
-    logger.info('[AI] AI response received', {
-      model: aiConfig.AI_MODEL,
-      url,
-      responseLength: responseText.length,
-      responsePreview: responseText.substring(0, 100),
-    })
+    logger.info(
+      `[AI] AI response received, ${JSON.stringify({
+        model: aiConfig.AI_MODEL,
+        url,
+        responseLength: responseText.length,
+        responsePreview: responseText.substring(0, 100),
+      })}`
+    )
 
     // Parse the response
     const parsed = parseAIResponse(responseText)
@@ -138,11 +145,13 @@ async function callAI(env: CloudflareEnv, url: string): Promise<AISlugResponse> 
       throw new Error(`AI request timeout after ${aiConfig.AI_TIMEOUT}ms`)
     }
 
-    logger.error('[AI] AI service call failed', {
-      model: aiConfig.AI_MODEL,
-      url,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    })
+    logger.error(
+      `[AI] AI service call failed, ${JSON.stringify({
+        model: aiConfig.AI_MODEL,
+        url,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })}`
+    )
 
     throw error
   }
@@ -160,7 +169,12 @@ export async function generateAISlug(
   if (cache && c.env.SHORTENER_KV) {
     const cached = await getCachedSlug(c.env.SHORTENER_KV, url)
     if (cached) {
-      logger.debug('[AI] Cache hit', { url, slug: cached.slug })
+      logger.debug(
+        `[AI] Cache hit, ${JSON.stringify({
+          url,
+          slug: cached.slug,
+        })}`
+      )
       return cached
     }
   }
@@ -176,7 +190,12 @@ export async function generateAISlug(
 
     return result
   } catch (error) {
-    logger.warn('[AI] AI generation failed', { url, error: (error as Error).message })
+    logger.error(
+      `[AI] AI generation failed, ${JSON.stringify({
+        url,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })}`
+    )
 
     throw error
   }
@@ -193,9 +212,11 @@ export function parseAIResponse(response: string) {
       confidence: parsed.confidence || 0.8,
     }
   } catch (jsonError) {
-    logger.info('[AI] Failed to parse JSON, attempting advanced extraction', {
-      response: response.substring(0, 200),
-    })
+    logger.info(
+      `[AI] Failed to parse JSON, attempting advanced extraction, ${JSON.stringify({
+        response: response.substring(0, 200),
+      })}`
+    )
 
     // Try to extract JSON from text
     const jsonMatch = response.match(/\{[^}]*"slug"[^}]*\}/)
@@ -216,10 +237,9 @@ export function parseAIResponse(response: string) {
     // Improved regex to match more specific slug patterns
     const slugMatch = response.match(/[a-z0-9][a-z0-9-]{1,18}[a-z0-9]/)
     if (slugMatch) {
-      logger.warn('[AI] Extracted slug from non-JSON response', {
-        originalResponse: response.substring(0, 100),
-        extractedSlug: slugMatch[0],
-      })
+      logger.warn(
+        `[AI] Extracted slug from non-JSON response, originalResponse: ${response.substring(0, 100)}, extractedSlug: ${slugMatch[0]}`
+      )
       return {
         slug: slugMatch[0],
         confidence: 0.4,
@@ -276,7 +296,7 @@ export async function getCachedSlug(
 
     return null
   } catch (error) {
-    logger.error('[AI] Cache read error', { url, error })
+    logger.error(`[AI] Cache read error, ${JSON.stringify({ url, error })}`)
     return null
   }
 }
@@ -299,7 +319,12 @@ export async function setCachedSlug(
       }
     )
   } catch (error) {
-    logger.warn('[AI] Cache write error', { url, error })
+    logger.error(
+      `[AI] Cache write error, ${JSON.stringify({
+        url,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })}`
+    )
   }
 }
 
