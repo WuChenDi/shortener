@@ -18,9 +18,8 @@ export const shortCodeRoutes = new Hono<{
   Variables: Variables
 }>()
 
-// Apply analytics middleware to all shortcode routes
 shortCodeRoutes.use('/:shortCode', analyticsMiddleware)
-shortCodeRoutes.use('/:shortCode/*', analyticsMiddleware)
+// shortCodeRoutes.use('/:shortCode/*', analyticsMiddleware)
 
 // GET / - Service health check and info
 shortCodeRoutes.get('/', async (c) => {
