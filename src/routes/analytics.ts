@@ -1,6 +1,16 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
-import { getDatasetName, analyticsQuerySchema, timeSeriesQuerySchema } from '@/utils'
+import {
+  getDatasetName,
+  analyticsQuerySchema,
+  timeSeriesQuerySchema,
+  buildSelectFields,
+  buildWhereConditions,
+  getIntervalFormat,
+  executeQuery,
+  getField,
+  sanitizeSqlInput,
+} from '@/utils'
 import type { CloudflareEnv, Variables, ApiResponse } from '@/types'
 
 export const analyticsRoutes = new Hono<{
@@ -16,6 +26,7 @@ analyticsRoutes.get('/overview', zValidator('query', analyticsQuerySchema), asyn
   logger.info(`[${requestId}] Analytics overview requested`, query)
 
   try {
+    // Verify Analytics Engine availability
     if (!c.env.ANALYTICS) {
       return c.json<ApiResponse>(
         {
@@ -26,31 +37,37 @@ analyticsRoutes.get('/overview', zValidator('query', analyticsQuerySchema), asyn
       )
     }
 
-    // Build SQL query for overview stats
+    // Build query conditions and execute overview query
     const whereConditions = buildWhereConditions(query)
     const datasetName = getDatasetName(c.env)
+
     const sql = `
       SELECT 
-        COUNT(*) as totalClicks,
-        COUNT(DISTINCT blob6) as uniqueVisitors,
-        COUNT(DISTINCT blob2) as uniqueLinks,
-        COUNT(DISTINCT blob8) as uniqueCountries
+        SUM(_sample_interval) as totalClicks,
+        COUNT(DISTINCT ${getField('ip')}) as uniqueVisitors,
+        COUNT(DISTINCT ${getField('hash')}) as uniqueLinks,
+        COUNT(DISTINCT ${getField('country')}) as uniqueCountries
       FROM ${datasetName} 
       ${whereConditions}
     `
 
-    logger.debug('Executing overview query', { sql })
-    const result = await executeQuery(c.env, sql)
+    logger.debug('Executing analytics overview query', { sql })
+    const { data: result } = await executeQuery(c.env, sql)
+
+    // Provide default values if no data found
+    const data = result[0] || {
+      totalClicks: 0,
+      uniqueVisitors: 0,
+      uniqueLinks: 0,
+      uniqueCountries: 0,
+    }
+
+    logger.info(`[${requestId}] Analytics overview completed`, data)
 
     return c.json<ApiResponse>({
       code: 0,
       message: 'success',
-      data: result[0] || {
-        totalClicks: 0,
-        uniqueVisitors: 0,
-        uniqueLinks: 0,
-        uniqueCountries: 0,
-      },
+      data,
     })
   } catch (error) {
     logger.error(`[${requestId}] Analytics overview failed`, error)
@@ -85,24 +102,25 @@ analyticsRoutes.get(
         )
       }
 
+      // Prepare time series query with proper formatting
       const intervalFormat = getIntervalFormat(query.interval)
       const whereConditions = buildWhereConditions(query)
       const datasetName = getDatasetName(c.env)
 
       const sql = `
-      SELECT 
-        formatDateTime(FROM_UNIXTIME(double3/1000), '${intervalFormat}', '${query.timezone}') as timeLabel,
-        COUNT(*) as clicks,
-        COUNT(DISTINCT blob6) as uniqueVisitors
-      FROM ${datasetName} 
-      ${whereConditions}
-      GROUP BY timeLabel
-      ORDER BY timeLabel
-      LIMIT ${query.limit}
-    `
+        SELECT 
+          formatDateTime(FROM_UNIXTIME(${getField('timestamp')}/1000), '${intervalFormat}', '${query.timezone}') as timeLabel,
+          SUM(_sample_interval) as clicks,
+          COUNT(DISTINCT ${getField('ip')}) as uniqueVisitors
+        FROM ${datasetName} 
+        ${whereConditions}
+        GROUP BY timeLabel
+        ORDER BY timeLabel
+        LIMIT ${query.limit}
+      `
 
-      logger.debug('Executing timeseries query', { sql })
-      const result = await executeQuery(c.env, sql)
+      logger.debug('Executing analytics timeseries query', { sql })
+      const { data: result } = await executeQuery(c.env, sql)
 
       return c.json<ApiResponse>({
         code: 0,
@@ -143,22 +161,24 @@ analyticsRoutes.get(
         )
       }
 
+      // Query top countries by click volume
       const whereConditions = buildWhereConditions(query)
       const datasetName = getDatasetName(c.env)
+
       const sql = `
-      SELECT 
-        blob8 as country,
-        COUNT(*) as clicks,
-        COUNT(DISTINCT blob6) as uniqueVisitors
-      FROM ${datasetName} 
-      ${whereConditions}
-      GROUP BY country
-      ORDER BY clicks DESC
-      LIMIT ${query.limit}
-    `
+        SELECT 
+          ${buildSelectFields({ country: 'country' })},
+          SUM(_sample_interval) as clicks,
+          COUNT(DISTINCT ${getField('ip')}) as uniqueVisitors
+        FROM ${datasetName} 
+        ${whereConditions}
+        GROUP BY country
+        ORDER BY clicks DESC
+        LIMIT ${query.limit}
+      `
 
       logger.debug('Executing top countries query', { sql })
-      const result = await executeQuery(c.env, sql)
+      const { data: result } = await executeQuery(c.env, sql)
 
       return c.json<ApiResponse>({
         code: 0,
@@ -199,23 +219,25 @@ analyticsRoutes.get(
         )
       }
 
+      // Query top referrers excluding direct traffic
       const whereConditions = buildWhereConditions(query)
       const datasetName = getDatasetName(c.env)
+
       const sql = `
-      SELECT 
-        blob7 as referrer,
-        COUNT(*) as clicks,
-        COUNT(DISTINCT blob6) as uniqueVisitors
-      FROM ${datasetName} 
-      ${whereConditions}
-      AND blob7 != 'direct'
-      GROUP BY referrer
-      ORDER BY clicks DESC
-      LIMIT ${query.limit}
-    `
+        SELECT 
+          ${buildSelectFields({ referrer: 'referer' })},
+          SUM(_sample_interval) as clicks,
+          COUNT(DISTINCT ${getField('ip')}) as uniqueVisitors
+        FROM ${datasetName} 
+        ${whereConditions}
+        AND ${getField('referer')} != 'direct'
+        GROUP BY referrer
+        ORDER BY clicks DESC
+        LIMIT ${query.limit}
+      `
 
       logger.debug('Executing top referrers query', { sql })
-      const result = await executeQuery(c.env, sql)
+      const { data: result } = await executeQuery(c.env, sql)
 
       return c.json<ApiResponse>({
         code: 0,
@@ -253,15 +275,19 @@ analyticsRoutes.get('/devices', zValidator('query', analyticsQuerySchema), async
       )
     }
 
+    // Multi-dimensional device analysis query
     const whereConditions = buildWhereConditions(query)
     const datasetName = getDatasetName(c.env)
+
     const sql = `
       SELECT 
-        blob16 as deviceType,
-        blob13 as os,
-        blob14 as browser,
-        COUNT(*) as clicks,
-        COUNT(DISTINCT blob6) as uniqueVisitors
+        ${buildSelectFields({
+          deviceType: 'deviceType',
+          os: 'os',
+          browser: 'browser',
+        })},
+        SUM(_sample_interval) as clicks,
+        COUNT(DISTINCT ${getField('ip')}) as uniqueVisitors
       FROM ${datasetName} 
       ${whereConditions}
       GROUP BY deviceType, os, browser
@@ -269,8 +295,8 @@ analyticsRoutes.get('/devices', zValidator('query', analyticsQuerySchema), async
       LIMIT ${query.limit}
     `
 
-    logger.debug('Executing devices query', { sql })
-    const result = await executeQuery(c.env, sql)
+    logger.debug('Executing device analytics query', { sql })
+    const { data: result } = await executeQuery(c.env, sql)
 
     return c.json<ApiResponse>({
       code: 0,
@@ -289,17 +315,132 @@ analyticsRoutes.get('/devices', zValidator('query', analyticsQuerySchema), async
   }
 })
 
-// GET /api/analytics/link/:shortCode
+// GET /api/analytics/browsers
+analyticsRoutes.get('/browsers', zValidator('query', analyticsQuerySchema), async (c) => {
+  const query = c.req.valid('query')
+  const requestId = c.get('requestId')
+
+  logger.info(`[${requestId}] Browser analytics requested`, query)
+
+  try {
+    if (!c.env.ANALYTICS) {
+      return c.json<ApiResponse>(
+        {
+          code: 503,
+          message: 'Analytics Engine not available',
+        },
+        503
+      )
+    }
+
+    // Browser usage analysis with version breakdown
+    const whereConditions = buildWhereConditions(query)
+    const datasetName = getDatasetName(c.env)
+
+    const sql = `
+      SELECT 
+        ${buildSelectFields({
+          browser: 'browser',
+          browserVersion: 'browserVersion',
+        })},
+        SUM(_sample_interval) as clicks,
+        COUNT(DISTINCT ${getField('ip')}) as uniqueVisitors
+      FROM ${datasetName} 
+      ${whereConditions}
+      GROUP BY browser, browserVersion
+      ORDER BY clicks DESC
+      LIMIT ${query.limit}
+    `
+
+    logger.debug('Executing browser analytics query', { sql })
+    const { data: result } = await executeQuery(c.env, sql)
+
+    return c.json<ApiResponse>({
+      code: 0,
+      message: 'success',
+      data: result,
+    })
+  } catch (error) {
+    logger.error(`[${requestId}] Browser analytics failed`, error)
+    return c.json<ApiResponse>(
+      {
+        code: 500,
+        message: 'Failed to fetch browser analytics',
+      },
+      500
+    )
+  }
+})
+
+// GET /api/analytics/operating-systems
 analyticsRoutes.get(
-  '/link/:shortCode',
-  zValidator('query', timeSeriesQuerySchema),
+  '/operating-systems',
+  zValidator('query', analyticsQuerySchema),
   async (c) => {
-    const shortCode = c.req.param('shortCode')
     const query = c.req.valid('query')
     const requestId = c.get('requestId')
 
-    logger.info(`[${requestId}] Link specific analytics requested`, {
-      shortCode,
+    logger.info(`[${requestId}] Operating systems analytics requested`, query)
+
+    try {
+      if (!c.env.ANALYTICS) {
+        return c.json<ApiResponse>(
+          {
+            code: 503,
+            message: 'Analytics Engine not available',
+          },
+          503
+        )
+      }
+
+      // Operating system usage analysis
+      const whereConditions = buildWhereConditions(query)
+      const datasetName = getDatasetName(c.env)
+
+      const sql = `
+        SELECT 
+          ${buildSelectFields({ os: 'os' })},
+          SUM(_sample_interval) as clicks,
+          COUNT(DISTINCT ${getField('ip')}) as uniqueVisitors
+        FROM ${datasetName} 
+        ${whereConditions}
+        GROUP BY os
+        ORDER BY clicks DESC
+        LIMIT ${query.limit}
+      `
+
+      logger.debug('Executing operating systems analytics query', { sql })
+      const { data: result } = await executeQuery(c.env, sql)
+
+      return c.json<ApiResponse>({
+        code: 0,
+        message: 'success',
+        data: result,
+      })
+    } catch (error) {
+      logger.error(`[${requestId}] Operating systems analytics failed`, error)
+      return c.json<ApiResponse>(
+        {
+          code: 500,
+          message: 'Failed to fetch operating systems analytics',
+        },
+        500
+      )
+    }
+  }
+)
+
+// GET /api/analytics/link/:hash
+analyticsRoutes.get(
+  '/link/:hash',
+  zValidator('query', timeSeriesQuerySchema),
+  async (c) => {
+    const hash = c.req.param('hash')
+    const query = c.req.valid('query')
+    const requestId = c.get('requestId')
+
+    logger.info(`[${requestId}] Link-specific analytics requested`, {
+      hash,
       ...query,
     })
 
@@ -314,70 +455,161 @@ analyticsRoutes.get(
         )
       }
 
-      const intervalFormat = getIntervalFormat(query.interval)
-      const whereConditions = buildWhereConditions({ ...query, shortCode })
+      // Prepare hash-based filtering conditions
+      const whereConditions = `WHERE ${getField('hash')} = '${sanitizeSqlInput(hash)}'`
       const datasetName = getDatasetName(c.env)
+      const intervalFormat = getIntervalFormat(query.interval)
 
-      // Get overview stats for this link
+      // Overview query with link metadata
       const overviewSql = `
-      SELECT 
-        COUNT(*) as totalClicks,
-        COUNT(DISTINCT blob6) as uniqueVisitors,
-        MIN(double3) as firstClick,
-        MAX(double3) as lastClick
-      FROM ${datasetName} 
-      ${whereConditions}
-    `
+        SELECT 
+          SUM(_sample_interval) as totalClicks,
+          COUNT(DISTINCT ${getField('ip')}) as uniqueVisitors,
+          MIN(${getField('timestamp')}) as firstClick,
+          MAX(${getField('timestamp')}) as lastClick,
+          ANY_VALUE(${getField('shortCode')}) as shortCode,
+          ANY_VALUE(${getField('domain')}) as domain,
+          ANY_VALUE(${getField('targetUrl')}) as targetUrl
+        FROM ${datasetName} 
+        ${whereConditions}
+      `
 
-      // Get timeseries data for this link
+      // Time series analysis for trend visualization
       const timeseriesSql = `
-      SELECT 
-        formatDateTime(FROM_UNIXTIME(double3/1000), '${intervalFormat}', '${query.timezone}') as timeLabel,
-        COUNT(*) as clicks,
-        COUNT(DISTINCT blob6) as uniqueVisitors
-      FROM ${datasetName} 
-      ${whereConditions}
-      GROUP BY timeLabel
-      ORDER BY timeLabel
-      LIMIT ${query.limit}
-    `
+        SELECT 
+          formatDateTime(FROM_UNIXTIME(${getField('timestamp')}/1000), '${intervalFormat}', '${query.timezone}') as timeLabel,
+          SUM(_sample_interval) as clicks,
+          COUNT(DISTINCT ${getField('ip')}) as uniqueVisitors
+        FROM ${datasetName} 
+        ${whereConditions}
+        GROUP BY timeLabel
+        ORDER BY timeLabel
+        LIMIT ${query.limit}
+      `
 
-      // Get top countries for this link
+      // Geographic distribution analysis
       const countriesSql = `
-      SELECT 
-        blob8 as country,
-        COUNT(*) as clicks
-      FROM ${datasetName} 
-      ${whereConditions}
-      GROUP BY country
-      ORDER BY clicks DESC
-      LIMIT 10
-    `
+        SELECT 
+          ${buildSelectFields({ country: 'country' })},
+          SUM(_sample_interval) as clicks,
+          COUNT(DISTINCT ${getField('ip')}) as uniqueVisitors
+        FROM ${datasetName} 
+        ${whereConditions}
+        GROUP BY country
+        ORDER BY clicks DESC
+        LIMIT 10
+      `
 
-      logger.debug('Executing link analytics queries', {
-        overviewSql,
-        timeseriesSql,
-        countriesSql,
-      })
+      // Traffic source analysis (excluding direct traffic)
+      const referrersSql = `
+        SELECT 
+          ${buildSelectFields({ referrer: 'referer' })},
+          SUM(_sample_interval) as clicks,
+          COUNT(DISTINCT ${getField('ip')}) as uniqueVisitors
+        FROM ${datasetName} 
+        ${whereConditions}
+        AND ${getField('referer')} != 'direct'
+        GROUP BY referrer
+        ORDER BY clicks DESC
+        LIMIT 10
+      `
 
-      const [overview, timeseries, countries] = await Promise.all([
+      // Device type breakdown analysis
+      const devicesSql = `
+        SELECT 
+          ${buildSelectFields({
+            deviceType: 'deviceType',
+            os: 'os',
+            browser: 'browser',
+          })},
+          SUM(_sample_interval) as clicks,
+          COUNT(DISTINCT ${getField('ip')}) as uniqueVisitors
+        FROM ${datasetName} 
+        ${whereConditions}
+        GROUP BY deviceType, os, browser
+        ORDER BY clicks DESC
+        LIMIT 10
+      `
+
+      // Browser usage breakdown analysis
+      const browsersSql = `
+        SELECT 
+          ${buildSelectFields({
+            browser: 'browser',
+            browserVersion: 'browserVersion',
+          })},
+          SUM(_sample_interval) as clicks,
+          COUNT(DISTINCT ${getField('ip')}) as uniqueVisitors
+        FROM ${datasetName} 
+        ${whereConditions}
+        GROUP BY browser, browserVersion
+        ORDER BY clicks DESC
+        LIMIT 10
+      `
+
+      logger.debug('Executing comprehensive link analytics queries', { hash })
+
+      // Execute all queries in parallel for optimal performance
+      const [
+        { data: overviewResult },
+        { data: timeseriesResult },
+        { data: countriesResult },
+        { data: referrersResult },
+        { data: devicesResult },
+        { data: browsersResult },
+      ] = await Promise.all([
         executeQuery(c.env, overviewSql),
         executeQuery(c.env, timeseriesSql),
         executeQuery(c.env, countriesSql),
+        executeQuery(c.env, referrersSql),
+        executeQuery(c.env, devicesSql),
+        executeQuery(c.env, browsersSql),
       ])
+
+      const overviewData = overviewResult[0]
+
+      // Return 404 if no analytics data exists for this hash
+      if (!overviewData || Number(overviewData.totalClicks) === 0) {
+        return c.json<ApiResponse>(
+          {
+            code: 404,
+            message: 'No analytics data found for this hash',
+          },
+          404
+        )
+      }
+
+      // Structure overview metrics
+      const overview = {
+        totalClicks: overviewData.totalClicks || 0,
+        uniqueVisitors: overviewData.uniqueVisitors || 0,
+        firstClick: overviewData.firstClick,
+        lastClick: overviewData.lastClick,
+      }
+
+      // Structure link information
+      const linkInfo = {
+        hash,
+        shortCode: overviewData.shortCode,
+        domain: overviewData.domain,
+        targetUrl: overviewData.targetUrl,
+      }
 
       return c.json<ApiResponse>({
         code: 0,
         message: 'success',
         data: {
-          shortCode,
-          overview: overview[0] || { totalClicks: 0, uniqueVisitors: 0 },
-          timeseries,
-          topCountries: countries,
+          linkInfo,
+          overview,
+          timeseries: timeseriesResult,
+          topCountries: countriesResult,
+          topReferrers: referrersResult,
+          topDevices: devicesResult,
+          topBrowsers: browsersResult,
         },
       })
     } catch (error) {
-      logger.error(`[${requestId}] Link analytics failed`, error)
+      logger.error(`[${requestId}] Link analytics failed`, { hash, error })
       return c.json<ApiResponse>(
         {
           code: 500,
@@ -389,80 +621,75 @@ analyticsRoutes.get(
   }
 )
 
-// Helper functions
-function buildWhereConditions(query: any): string {
-  const conditions: string[] = ['1=1']
+// GET /api/analytics/real-time
+analyticsRoutes.get('/real-time', async (c) => {
+  const requestId = c.get('requestId')
 
-  if (query.linkId) {
-    conditions.push(`index1 = '${query.linkId}'`)
-  }
+  logger.info(`[${requestId}] Real-time analytics requested`)
 
-  if (query.userId) {
-    conditions.push(`index2 = '${query.userId}'`)
-  }
-
-  if (query.shortCode) {
-    conditions.push(`blob1 = '${query.shortCode}'`)
-  }
-
-  if (query.domain) {
-    conditions.push(`blob2 = '${query.domain}'`)
-  }
-
-  if (query.country) {
-    conditions.push(`blob7 = '${query.country}'`)
-  }
-
-  if (query.startTime) {
-    conditions.push(`double3 >= ${query.startTime}`)
-  }
-
-  if (query.endTime) {
-    conditions.push(`double3 <= ${query.endTime}`)
-  }
-
-  return conditions.length > 1 ? `WHERE ${conditions.join(' AND ')}` : ''
-}
-
-function getIntervalFormat(interval: string): string {
-  switch (interval) {
-    case 'hour':
-      return '%Y-%m-%d %H:00:00'
-    case 'day':
-      return '%Y-%m-%d'
-    case 'week':
-      return '%Y-W%V'
-    case 'month':
-      return '%Y-%m'
-    default:
-      return '%Y-%m-%d'
-  }
-}
-
-async function executeQuery(env: CloudflareEnv, sql: string): Promise<any[]> {
-  logger.debug('Executing Analytics Engine query', { sql })
-
-  const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
-        'Content-Type': 'application/sql',
-      },
-      body: sql,
+  try {
+    if (!c.env.ANALYTICS) {
+      return c.json<ApiResponse>(
+        {
+          code: 503,
+          message: 'Analytics Engine not available',
+        },
+        503
+      )
     }
-  )
 
-  logger.info('response', { ...response })
+    const datasetName = getDatasetName(c.env)
+    const last24h = Date.now() - 24 * 60 * 60 * 1000
 
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Analytics query failed: ${response.status} ${error}`)
+    // Query recent activity data for real-time dashboard
+    const sql = `
+      SELECT 
+        ${buildSelectFields({
+          shortCode: 'shortCode',
+          country: 'country',
+          deviceType: 'deviceType',
+          timestamp: 'timestamp',
+        })},
+        SUM(_sample_interval) as clicks
+      FROM ${datasetName} 
+      WHERE ${getField('timestamp')} >= ${last24h}
+      ORDER BY ${getField('timestamp')} DESC
+      LIMIT 100
+    `
+
+    logger.debug('Executing real-time analytics query', { sql })
+    const { data: result } = await executeQuery(c.env, sql)
+
+    // Process results for real-time dashboard display
+    const recentClicks = result.slice(0, 20).map((r) => ({
+      timestamp: r.timestamp,
+      shortCode: r.shortCode,
+      country: r.country,
+      deviceType: r.deviceType,
+      clicks: Number.parseInt(r.clicks || '0') || 0,
+    }))
+
+    // Calculate active metrics (note: IP field not included in SELECT, using approximation)
+    const activeVisitors = new Set(result.filter((r) => r.ip).map((r) => r.ip)).size
+    const clicksLast24h = result.reduce((sum, r) => sum + (Number(r.clicks) || 0), 0)
+
+    return c.json<ApiResponse>({
+      code: 0,
+      message: 'success',
+      data: {
+        activeVisitors,
+        clicksLast24h,
+        recentClicks,
+      },
+    })
+  } catch (error) {
+    logger.error(`[${requestId}] Real-time analytics failed`, error)
+    return c.json<ApiResponse>(
+      {
+        code: 500,
+        message: 'Failed to fetch real-time analytics',
+      },
+      500
+    )
   }
-
-  return response.json()
-
-  // const result = await response.json()
-  // return result.data || []
-}
+})

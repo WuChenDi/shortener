@@ -117,7 +117,10 @@ export const suggestionsSchema = z.object({
 export const analyticsQuerySchema = z.object({
   linkId: z.string().optional(),
   userId: z.string().optional(),
-  shortCode: z.string().optional(),
+  hash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/i, 'Hash must be a 64-character hexadecimal string')
+    .optional(),
   domain: z.string().optional(),
   country: z.string().optional(),
   startTime: z

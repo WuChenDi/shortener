@@ -355,3 +355,121 @@ export interface AnalyticsAggregationOptions {
   limit?: number
   offset?: number
 }
+
+/**
+ * Analytics data structure for Cloudflare Analytics Engine
+ * Optimized for efficient querying and storage
+ */
+export interface AnalyticsData {
+  /**
+   * Unique hash identifier for the analytics event
+   */
+  hash: string
+
+  // String data (blobs)
+  /**
+   * Database record ID
+   */
+  linkId: string
+  /**
+   * User identifier for user analytics
+   */
+  userId: string
+  /**
+   * Short code for URL reconstruction
+   */
+  shortCode: string
+  /**
+   * Domain for multi-domain analysis
+   */
+  domain: string
+  /**
+   * Target URL destination
+   */
+  targetUrl: string
+  /**
+   * Full user agent string
+   */
+  userAgent: string
+  /**
+   * Client IP address for unique visitor tracking
+   */
+  ip: string
+  /**
+   * Referrer hostname for traffic source analysis
+   */
+  referer: string
+  /**
+   * Country name for geographic analysis
+   */
+  country: string
+  /**
+   * Region/state information
+   */
+  region: string
+  /**
+   * City information
+   */
+  city: string
+  /**
+   * Timezone
+   */
+  timezone: string
+  /**
+   * Primary language preference
+   */
+  language: string
+  /**
+   * Operating system
+   */
+  os: string
+  /**
+   * Browser name
+   */
+  browser: string
+  /**
+   * Browser version
+   */
+  browserVersion: string
+  /**
+   * Device type (desktop/mobile/tablet)
+   */
+  deviceType: string
+  /**
+   * Device model information
+   */
+  deviceModel: string
+  /**
+   * Cloudflare edge location
+   */
+  colo: string
+
+  // Numeric data
+  /**
+   * Geographic latitude
+   */
+  latitude: number
+  /**
+   * Geographic longitude
+   */
+  longitude: number
+  /**
+   * Visit timestamp in milliseconds
+   */
+  timestamp: number
+}
+
+/**
+ * Analytics aggregation result
+ * 
+ * - links: https://developers.cloudflare.com/analytics/analytics-engine/sql-reference/#format-clause
+ */
+export interface CloudflareAnalyticsResponse {
+  meta: Array<{
+    name: string
+    type: string
+  }>
+  data: Record<string, string>[]
+  rows: number
+  rows_before_limit_at_least: number
+}

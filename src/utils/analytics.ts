@@ -1,86 +1,219 @@
-import type { CloudflareEnv, AnalyticsDataPoint, AnalyticsOverview } from '@/types'
+import type { CloudflareAnalyticsResponse, CloudflareEnv } from '@/types'
 
 /**
- * Analytics Engine field mappings (Updated for single index support)
- * This maps the Analytics Engine blob/double fields to our data structure
+ * Analytics Engine field mapping configuration
+ * Maps logical field names to Analytics Engine storage fields
+ * Optimized for query performance and data organization
  */
-export const ANALYTICS_FIELD_MAPPING = {
-  // Indexes (only 1 index supported)
-  index1: 'linkId', // Link ID for efficient querying
+export const FIELD_MAPPING = {
+  // Primary index field for efficient hash-based queries
+  hash: 'index1',
 
-  // Blobs (string data) - limit 16 blobs
-  blob1: 'userId', // User ID (moved from index)
-  blob2: 'shortCode', // Short code
-  blob3: 'domain', // Domain
-  blob4: 'targetUrl', // Target URL
-  blob5: 'userAgent', // User agent string
-  blob6: 'ip', // IP address
-  blob7: 'referer', // Referrer hostname
-  blob8: 'country', // Country name
-  blob9: 'region', // Region name
-  blob10: 'city', // City name
-  blob11: 'timezone', // Timezone
-  blob12: 'language', // Language code
-  blob13: 'os', // Operating system
-  blob14: 'browser', // Browser name
-  blob15: 'browserVersion', // Browser version
-  blob16: 'deviceType', // Device type (desktop/mobile/tablet)
-  blob17: 'deviceModel', // Device model
-  blob18: 'colo', // Cloudflare colo
+  // String data fields (blobs) - ordered by query frequency and importance
+  linkId: 'blob1', // Database record ID for data correlation
+  userId: 'blob2', // User identifier for user analytics
+  shortCode: 'blob3', // Short code for URL reconstruction
+  domain: 'blob4', // Domain for multi-domain analytics
+  targetUrl: 'blob5', // Target URL destination
+  userAgent: 'blob6', // User agent string for device detection
+  ip: 'blob7', // Client IP for unique visitor tracking
+  referer: 'blob8', // Referrer hostname for traffic source analysis
+  country: 'blob9', // Country for geographic analytics
+  region: 'blob10', // Region/state information
+  city: 'blob11', // City information
+  timezone: 'blob12', // Client timezone
+  language: 'blob13', // Primary language preference
+  os: 'blob14', // Operating system for device analytics
+  browser: 'blob15', // Browser name for browser analytics
+  browserVersion: 'blob16', // Browser version for compatibility analysis
+  deviceType: 'blob17', // Device type (desktop/mobile/tablet)
+  deviceModel: 'blob18', // Device model information
+  colo: 'blob19', // Cloudflare edge location
 
-  // Doubles (numeric data) - limit 16 doubles
-  double1: 'latitude', // Latitude
-  double2: 'longitude', // Longitude
-  double3: 'timestamp', // Timestamp (milliseconds)
+  // Numeric data fields (doubles) for mathematical operations
+  latitude: 'double1', // Geographic latitude
+  longitude: 'double2', // Geographic longitude
+  timestamp: 'double3', // Visit timestamp for time-based analysis
 } as const
 
 /**
- * Convert analytics data to Analytics Engine format
+ * Time format patterns for Analytics Engine date formatting
+ * Used in formatDateTime() SQL function for time series analysis
  */
-export function toAnalyticsEngineFormat(data: AnalyticsDataPoint) {
-  return {
-    indexes: [data.linkId.toString()], // Only linkId as index
-    blobs: [
-      data.userId, // blob1
-      data.shortCode, // blob2
-      data.domain, // blob3
-      data.targetUrl, // blob4
-      data.userAgent, // blob5
-      data.ip, // blob6
-      data.referer, // blob7
-      data.country, // blob8
-      data.region, // blob9
-      data.city, // blob10
-      data.timezone, // blob11
-      data.language, // blob12
-      data.os, // blob13
-      data.browser, // blob14
-      data.browserVersion, // blob15
-      data.deviceType, // blob16
-      data.deviceModel, // blob17
-      data.colo, // blob18
-    ],
-    doubles: [
-      data.latitude, // double1
-      data.longitude, // double2
-      data.timestamp, // double3
-    ],
+export const TIME_FORMATS = {
+  hour: '%Y-%m-%d %H:00:00', // Hourly aggregation: 2024-01-01 14:00:00
+  day: '%Y-%m-%d', // Daily aggregation: 2024-01-01
+  week: '%Y-W%V', // Weekly aggregation: 2024-W01
+  month: '%Y-%m', // Monthly aggregation: 2024-01
+} as const
+
+/**
+ * Bot detection patterns for filtering automated traffic
+ * Comprehensive list of common bot user agent substrings
+ */
+export const BOT_PATTERNS = [
+  // Generic bot patterns
+  'bot',
+  'crawler',
+  'spider',
+  'scraper',
+
+  // Social media crawlers
+  'facebook',
+  'twitter',
+  'linkedin',
+  'telegram',
+  'whatsapp',
+  'discord',
+  'slack',
+
+  // Search engine bots
+  'googlebot',
+  'bingbot',
+  'yahoobot',
+
+  // Specific social platform bots
+  'facebookexternalhit',
+  'twitterbot',
+  'linkedinbot',
+] as const
+
+/**
+ * Get the Analytics Engine field name for a logical field
+ *
+ * @param fieldName - Logical field name from FIELD_MAPPING
+ * @returns Analytics Engine field name (e.g., 'blob1', 'double1')
+ */
+export function getField(fieldName: keyof typeof FIELD_MAPPING): string {
+  return FIELD_MAPPING[fieldName]
+}
+
+/**
+ * Build SQL SELECT clause with field aliases
+ * Maps logical field names to Analytics Engine fields with proper aliases
+ *
+ * @param fields - Object mapping alias names to logical field names
+ * @returns SQL SELECT fields string
+ *
+ * @example
+ * buildSelectFields({ country: 'country', browser: 'browser' })
+ * // Returns: "blob9 as country, blob15 as browser"
+ */
+export function buildSelectFields(
+  fields: Record<string, keyof typeof FIELD_MAPPING>
+): string {
+  return Object.entries(fields)
+    .map(([alias, fieldName]) => `${getField(fieldName)} as ${alias}`)
+    .join(', ')
+}
+
+/**
+ * Build SQL WHERE clause from query parameters
+ * Safely constructs filtering conditions with proper SQL escaping
+ *
+ * @param query - Query parameters object
+ * @returns SQL WHERE clause string (empty if no conditions)
+ */
+export function buildWhereConditions(query: {
+  hash?: string
+  linkId?: string
+  userId?: string
+  shortCode?: string
+  domain?: string
+  country?: string
+  startTime?: number
+  endTime?: number
+}): string {
+  const conditions: string[] = ['1=1'] // Always true condition as base
+
+  // String field conditions with SQL injection protection
+  if (query.hash) {
+    conditions.push(`${getField('hash')} = '${sanitizeSqlInput(query.hash)}'`)
   }
+  if (query.linkId) {
+    conditions.push(`${getField('linkId')} = '${sanitizeSqlInput(query.linkId)}'`)
+  }
+  if (query.userId) {
+    conditions.push(`${getField('userId')} = '${sanitizeSqlInput(query.userId)}'`)
+  }
+  if (query.shortCode) {
+    conditions.push(`${getField('shortCode')} = '${sanitizeSqlInput(query.shortCode)}'`)
+  }
+  if (query.domain) {
+    conditions.push(`${getField('domain')} = '${sanitizeSqlInput(query.domain)}'`)
+  }
+  if (query.country) {
+    conditions.push(`${getField('country')} = '${sanitizeSqlInput(query.country)}'`)
+  }
+
+  // Numeric timestamp conditions (no escaping needed for numbers)
+  if (query.startTime) {
+    conditions.push(`${getField('timestamp')} >= ${query.startTime}`)
+  }
+  if (query.endTime) {
+    conditions.push(`${getField('timestamp')} <= ${query.endTime}`)
+  }
+
+  // Return WHERE clause only if there are actual conditions
+  return conditions.length > 1 ? `WHERE ${conditions.join(' AND ')}` : ''
+}
+
+/**
+ * Get time format pattern for SQL date formatting
+ *
+ * @param interval - Time interval (hour/day/week/month)
+ * @returns SQL date format pattern, defaults to daily if invalid
+ */
+export function getIntervalFormat(interval: string): string {
+  return TIME_FORMATS[interval as keyof typeof TIME_FORMATS] || TIME_FORMATS.day
+}
+
+/**
+ * Sanitize SQL input to prevent SQL injection
+ * Removes potentially dangerous characters from user input
+ *
+ * @param input - Raw user input string
+ * @returns Sanitized string safe for SQL queries
+ *
+ * @example
+ * sanitizeSqlInput("'; DROP TABLE users; --")
+ * // Returns: " DROP TABLE users "
+ */
+export function sanitizeSqlInput(input: string): string {
+  return input.replace(/['"]/g, '').replace(/[;\-]/g, '')
+}
+
+/**
+ * Get Analytics Engine dataset name from environment
+ *
+ * @param env - Cloudflare environment configuration
+ * @returns Dataset name, defaults to 'shortener_analytics'
+ */
+export function getDatasetName(env: CloudflareEnv): string {
+  return env.ANALYTICS_DATASET || 'shortener_analytics'
 }
 
 /**
  * Execute SQL query against Cloudflare Analytics Engine
+ * Handles authentication, error handling, and response parsing
+ *
+ * @param env - Cloudflare environment with API credentials
+ * @param sql - SQL query string to execute
+ * @returns Promise resolving to query results
+ * @throws Error if credentials missing or query fails
  */
-export async function executeAnalyticsQuery(
+export async function executeQuery(
   env: CloudflareEnv,
   sql: string
-): Promise<any[]> {
+): Promise<CloudflareAnalyticsResponse> {
+  logger.debug('Executing Analytics Engine query', { sql })
+
+  // Validate required credentials
   if (!env.CLOUDFLARE_ACCOUNT_ID || !env.CLOUDFLARE_API_TOKEN) {
-    throw new Error('Cloudflare Analytics Engine credentials not configured')
+    throw new Error('Missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN')
   }
 
-  logger.debug('Executing Analytics Engine query', { sql: sql.substring(0, 200) + '...' })
-
+  // Execute query via Cloudflare API
   const response = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`,
     {
@@ -93,243 +226,37 @@ export async function executeAnalyticsQuery(
     }
   )
 
+  // Handle API errors
   if (!response.ok) {
-    const errorText = await response.text()
-    logger.error('Analytics Engine query failed', {
-      status: response.status,
-      statusText: response.statusText,
-      error: errorText,
-      sql: sql.substring(0, 200),
-    })
-    throw new Error(`Analytics query failed: ${response.status} ${errorText}`)
+    const error = await response.text()
+    throw new Error(`Analytics query failed: ${response.status} ${error}`)
   }
 
-  const result = await response.json()
-  logger.debug('Analytics Engine query completed', {
-    resultCount: Array.isArray(result) ? result.length : 'unknown',
+  // Parse and return results
+  const result: CloudflareAnalyticsResponse = await response.json()
+  logger.debug('Analytics query executed successfully', {
+    rowCount: result.rows,
+    metaFields: result.meta?.length || 0,
   })
 
-  return Array.isArray(result) ? result : []
+  return result
 }
 
 /**
- * Build WHERE clause for analytics queries (Updated for single index)
+ * Detect if user agent represents a bot or automated client
+ * Used for filtering bot traffic from analytics if desired
+ *
+ * @param userAgent - User agent string from request headers
+ * @returns true if user agent matches known bot patterns
+ *
+ * @example
+ * isBot('Mozilla/5.0 (compatible; Googlebot/2.1)')
+ * // Returns: true
+ *
+ * isBot('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+ * // Returns: false
  */
-export function buildAnalyticsWhereClause(filters: {
-  linkId?: string
-  userId?: string
-  shortCode?: string
-  domain?: string
-  country?: string
-  startTime?: number
-  endTime?: number
-}): string {
-  const conditions: string[] = []
-
-  if (filters.linkId) {
-    conditions.push(`index1 = '${sanitizeSqlInput(filters.linkId)}'`)
-  }
-
-  if (filters.userId) {
-    conditions.push(`blob1 = '${sanitizeSqlInput(filters.userId)}'`) // userId is now blob1
-  }
-
-  if (filters.shortCode) {
-    conditions.push(`blob2 = '${sanitizeSqlInput(filters.shortCode)}'`) // shortCode is now blob2
-  }
-
-  if (filters.domain) {
-    conditions.push(`blob3 = '${sanitizeSqlInput(filters.domain)}'`) // domain is now blob3
-  }
-
-  if (filters.country) {
-    conditions.push(`blob8 = '${sanitizeSqlInput(filters.country)}'`) // country is now blob8
-  }
-
-  if (filters.startTime) {
-    conditions.push(`double3 >= ${filters.startTime}`) // timestamp is double3
-  }
-
-  if (filters.endTime) {
-    conditions.push(`double3 <= ${filters.endTime}`) // timestamp is double3
-  }
-
-  return conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-}
-
-/**
- * Get time format string for different intervals
- */
-export function getTimeFormat(interval: string): string {
-  switch (interval) {
-    case 'hour':
-      return '%Y-%m-%d %H:00:00'
-    case 'day':
-      return '%Y-%m-%d'
-    case 'week':
-      return '%Y-W%V'
-    case 'month':
-      return '%Y-%m'
-    default:
-      return '%Y-%m-%d'
-  }
-}
-
-/**
- * Validate analytics query parameters
- */
-export function validateAnalyticsQuery(query: any): {
-  isValid: boolean
-  errors: string[]
-} {
-  const errors: string[] = []
-
-  // Validate date range
-  if (query.startTime && query.endTime) {
-    if (query.startTime >= query.endTime) {
-      errors.push('startTime must be less than endTime')
-    }
-
-    // Limit to 1 year maximum
-    const maxRange = 365 * 24 * 60 * 60 * 1000 // 1 year in milliseconds
-    if (query.endTime - query.startTime > maxRange) {
-      errors.push('Date range cannot exceed 1 year')
-    }
-  }
-
-  // Validate limit
-  if (query.limit && (query.limit < 1 || query.limit > 10000)) {
-    errors.push('limit must be between 1 and 10000')
-  }
-
-  // Validate offset
-  if (query.offset && query.offset < 0) {
-    errors.push('offset cannot be negative')
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors,
-  }
-}
-
-/**
- * Calculate analytics summary statistics
- */
-export async function getAnalyticsSummary(
-  env: CloudflareEnv,
-  filters: {
-    linkId?: string
-    userId?: string
-    startTime?: number
-    endTime?: number
-  } = {}
-): Promise<AnalyticsOverview> {
-  const whereClause = buildAnalyticsWhereClause(filters)
-
-  const sql = `
-    SELECT 
-      COUNT(*) as totalClicks,
-      COUNT(DISTINCT blob5) as uniqueVisitors,
-      COUNT(DISTINCT blob1) as uniqueLinks,
-      COUNT(DISTINCT blob7) as uniqueCountries
-    FROM analytics_dataset 
-    ${whereClause}
-  `
-
-  const result = await executeAnalyticsQuery(env, sql)
-
-  return (
-    result[0] || {
-      totalClicks: 0,
-      uniqueVisitors: 0,
-      uniqueLinks: 0,
-      uniqueCountries: 0,
-    }
-  )
-}
-
-/**
- * Get real-time analytics (last 24 hours)
- */
-export async function getRealTimeAnalytics(env: CloudflareEnv) {
-  const last24h = Date.now() - 24 * 60 * 60 * 1000
-  const datasetName = getDatasetName(env)
-
-  const sql = `
-    SELECT 
-      blob2 as shortCode,
-      blob4 as targetUrl,
-      blob8 as country,
-      blob16 as deviceType,
-      double3 as timestamp,
-      COUNT(*) as clicks
-    FROM ${datasetName} 
-    WHERE double3 >= ${last24h}
-    ORDER BY double3 DESC
-    LIMIT 100
-  `
-
-  const result = await executeAnalyticsQuery(env, sql)
-
-  return {
-    activeVisitors: new Set(result.map((r) => r.blob6)).size, // Unique IPs
-    clicksLast24h: result.length,
-    recentClicks: result.slice(0, 20).map((r) => ({
-      timestamp: r.timestamp,
-      shortCode: r.shortCode,
-      country: r.country,
-      device: r.deviceType,
-    })),
-  }
-}
-
-/**
- * Get the correct dataset name for Analytics Engine queries
- */
-export function getDatasetName(env: CloudflareEnv): string {
-  // Use configured dataset name or fall back to default
-  return env.ANALYTICS_DATASET || 'shortener_analytics'
-}
-
-/**
- * Sanitize SQL input to prevent injection
- */
-export function sanitizeSqlInput(input: string): string {
-  return input.replace(/['"]/g, '').replace(/[;\-]/g, '')
-}
-
-/**
- * Get popular time periods for analytics
- */
-export function getPopularTimePeriods() {
-  const now = Date.now()
-  const day = 24 * 60 * 60 * 1000
-
-  return {
-    today: {
-      start: new Date().setHours(0, 0, 0, 0),
-      end: now,
-    },
-    yesterday: {
-      start: new Date().setHours(0, 0, 0, 0) - day,
-      end: new Date().setHours(0, 0, 0, 0),
-    },
-    last7days: {
-      start: now - 7 * day,
-      end: now,
-    },
-    last30days: {
-      start: now - 30 * day,
-      end: now,
-    },
-    thisMonth: {
-      start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime(),
-      end: now,
-    },
-    lastMonth: {
-      start: new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).getTime(),
-      end: new Date(new Date().getFullYear(), new Date().getMonth(), 0).getTime(),
-    },
-  }
+export function isBot(userAgent: string): boolean {
+  const ua = userAgent.toLowerCase()
+  return BOT_PATTERNS.some((pattern) => ua.includes(pattern))
 }
