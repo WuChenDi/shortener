@@ -2,6 +2,7 @@
 
 A URL shortener service built with Cloudflare Workers and Hono.
 
+- Postman: https://www.postman.com/warped-escape-22628/shortener/overview
 - **Tips**: For information about OpenAPI and Swagger, please refer to the [feat/swagger-openapi](https://github.com/WuChenDi/shortener/tree/feat/swagger-openapi) branch.
 
 ## ✨ Features
