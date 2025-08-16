@@ -42,53 +42,41 @@ A URL shortener service built with Cloudflare Workers and Hono.
 ### System Architecture
 
 ```mermaid
-graph TB
-    subgraph Client Layer
-        A[Web Browser]
-        B[Mobile App]
-        C[Social Media Crawlers]
+graph TD
+    subgraph "Clients"
+        A[Clients/Browsers/API/Crawlers] -->|HTTP Requests| B[Hono App]
     end
-    subgraph CDN/Edge Layer
-        D[Cloudflare Workers]
-        E[Cloudflare KV Cache]
-        F[Cron Triggers]
-        G[Cloudflare AI]
-        H[Cloudflare Analytics Engine]
+
+    subgraph "Hono Application"
+        B -->|Routes| E[Shortcode Routes]
+        B -->|Routes| F[API Routes]
+        B -->|Routes| G[AI Routes]
+        B -->|Routes| H[Analytics Routes]
+        B -->|Middleware| I[Auth/Logging/Error Handling]
     end
-    subgraph Application Layer
-        I[Hono Framework]
-        J[Middleware Stack]
-        K[Route Handlers]
-        L[Cache Service]
-        M[Cleanup Service]
-        N[AI Service]
-        O[Analytics Service]
+
+    subgraph "Business Logic"
+        E --> N[Redirect/OG Page]
+        F --> O[Link Management]
+        G --> P[AI Slug Generation]
+        H --> Q[Data Analytics]
     end
-    subgraph Database Layer
-        P[Drizzle ORM]
-        Q[Cloudflare D1]
-        R[LibSQL/Turso]
+
+    subgraph "Data Layer"
+        W[Database: D1/LibSQL] <-->|Query/Update| N
+        W <-->|Query/Update| O
+        Y[KV Cache] <-->|Caching| N
+        Y <-->|Caching| O
+        Y <-->|Caching| P
+        AA[Cloudflare AI] <-->|AI Generation| P
+        AB[Analytics Engine] <-->|Analytics Queries| Q
     end
-    A --> D
-    B --> D
-    C --> D
-    D --> E
-    D --> G
-    D --> H
-    D --> I
-    F --> M
-    I --> J
-    J --> K
-    K --> L
-    K --> N
-    K --> O
-    L --> E
-    N --> G
-    O --> H
-    K --> P
-    M --> P
-    P --> Q
-    P --> R
+
+    subgraph "Scheduled Tasks"
+        AC[Scheduler] -->|Triggers| AD[Cleanup Expired Links]
+        AD --> W
+        AD --> Y
+    end
 ```
 
 ### Caching Strategy
