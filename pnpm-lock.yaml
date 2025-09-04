@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@hono/zod-validator':
         specifier: ^0.7.2
-        version: 0.7.2(hono@4.8.12)(zod@4.0.15)
+        version: 0.7.2(hono@4.9.6)(zod@4.0.15)
       '@libsql/client':
         specifier: ^0.15.10
         version: 0.15.10
@@ -21,8 +21,8 @@ importers:
         specifier: ^0.44.4
         version: 0.44.4(@cloudflare/workers-types@4.20250806.0)(@libsql/client@0.15.10)
       hono:
-        specifier: ^4.8.12
-        version: 4.8.12
+        specifier: ^4.9.6
+        version: 4.9.6
       jose:
         specifier: ^6.0.12
         version: 6.0.12
@@ -1078,8 +1078,8 @@ packages:
     resolution: {integrity: sha512-0hJU9SCPvmMzIBdZFqNPXWa6dqh7WdH0cII9y+CyS8rG3nL48Bclra9HmKhVVUHyPWNH5Y7xDwAB7bfgSjkUMQ==}
     engines: {node: '>= 0.4'}
 
-  hono@4.8.12:
-    resolution: {integrity: sha512-MQSKk1Mg7b74k8l+A025LfysnLtXDKkE4pLaSsYRQC5iy85lgZnuyeQ1Wynair9mmECzoLu+FtJtqNZSoogBDQ==}
+  hono@4.9.6:
+    resolution: {integrity: sha512-doVjXhSFvYZ7y0dNokjwwSahcrAfdz+/BCLvAMa/vHLzjj8+CFyV5xteThGUsKdkaasgN+gF2mUxao+SGLpUeA==}
     engines: {node: '>=16.9.0'}
 
   inherits@2.0.4:
@@ -1110,6 +1110,7 @@ packages:
 
   libsql@0.5.17:
     resolution: {integrity: sha512-RRlj5XQI9+Wq+/5UY8EnugSWfRmHEw4hn3DKlPrkUgZONsge1PwTtHcpStP6MSNi8ohcbsRgEHJaymA33a8cBw==}
+    cpu: [x64, arm64, wasm32, arm]
     os: [darwin, linux, win32]
 
   logform@2.7.0:
@@ -1616,9 +1617,9 @@ snapshots:
   '@esbuild/win32-x64@0.25.8':
     optional: true
 
-  '@hono/zod-validator@0.7.2(hono@4.8.12)(zod@4.0.15)':
+  '@hono/zod-validator@0.7.2(hono@4.9.6)(zod@4.0.15)':
     dependencies:
-      hono: 4.8.12
+      hono: 4.9.6
       zod: 4.0.15
 
   '@img/sharp-darwin-arm64@0.33.5':
@@ -2071,7 +2072,7 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  hono@4.8.12: {}
+  hono@4.9.6: {}
 
   inherits@2.0.4: {}
 
