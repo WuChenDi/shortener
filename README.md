@@ -788,6 +788,8 @@ To modify the cleanup frequency, update the cron expression in `wrangler.jsonc`:
 
 ### Cloudflare Workers
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/WuChenDi/shortener)
+
 ```bash
 # Build and deploy
 pnpm run deploy
