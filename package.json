@@ -32,7 +32,7 @@
     "@libsql/client": "^0.15.10",
     "@noble/hashes": "^1.8.0",
     "drizzle-orm": "^0.44.4",
-    "hono": "^4.8.12",
+    "hono": "^4.9.7",
     "jose": "^6.0.12",
     "ua-parser-js": "^2.0.4",
     "winston": "^3.17.0",
