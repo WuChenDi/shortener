@@ -84,6 +84,14 @@ web_modules/
 .env.production.local
 .env.local
 
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
@@ -101,6 +109,7 @@ apps/*/messages/en.d.json.ts
 .output
 dist
 
+# cloudflare workers build output
 .wrangler
 
 # Gatsby files
@@ -155,5 +164,4 @@ dist
 
 # other
 collect_files.sh
-files_summary.md
 files_summary*.md
