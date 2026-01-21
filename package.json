@@ -43,6 +43,6 @@
     "@cloudflare/workers-types": "^4.20250806.0",
     "@types/node": "^22",
     "drizzle-kit": "^0.31.4",
-    "wrangler": "^4.28.0"
+    "wrangler": "^4.59.1"
   }
 }
